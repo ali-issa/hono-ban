@@ -6,13 +6,6 @@ Official formatters package for hono-ban, providing implementations of common er
 [![Bundle Size](https://img.shields.io/bundlephobia/min/@hono-ban/formatters)](https://bundlephobia.com/result?p=@hono-ban/formatters)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/@hono-ban/formatters)](https://bundlephobia.com/result?p=@hono-ban/formatters)
 
-## Requirements
-
-- [Hono.js](https://hono.dev) ^4.7.0
-- TypeScript ^5.7.3
-- [@hono/zod-openapi](https://github.com/honojs/middleware/tree/main/packages/zod-openapi) ^0.9.6 (optional)
-- [hono-ban](https://github.com/ali-issa/hono-ban) (core package)
-
 ## Installation
 
 ```bash
@@ -26,7 +19,7 @@ npm install @hono-ban/formatters
 Implementation of [RFC 7807: Problem Details for HTTP APIs](https://datatracker.ietf.org/doc/html/rfc7807).
 
 ```typescript
-import { Ban } from "@hono-ban/core";
+import { Ban } from "hono-ban";
 import { RFC7807Formatter } from "@hono-ban/formatters";
 
 // Configure the formatter
@@ -102,10 +95,10 @@ const data = RFC7807Formatter.createProblemDetails({
 
 ## Creating Custom Formatters
 
-To create a custom formatter, implement the `ErrorFormatter` interface from `@hono-ban/core`:
+To create a custom formatter, implement the `ErrorFormatter` interface from `hono-ban`:
 
 ```typescript
-import { Ban, ErrorFormatter } from "@hono-ban/core";
+import { Ban, ErrorFormatter } from "hono-ban";
 
 class CustomFormatter implements ErrorFormatter {
   readonly contentType = "application/vnd.error+json";

@@ -1,22 +1,15 @@
-# @hono-ban/core 💥
+# hono-ban 💥
 
 Core package for hono-ban, providing the fundamental error handling functionality for Hono.js applications.
 
 [![npm version](https://badge.fury.io/js/hono-ban.svg)](https://badge.fury.io/js/hono-ban)
 [![Bundle Size](https://img.shields.io/bundlephobia/min/hono-ban)](https://bundlephobia.com/result?p=hono-ban)
 [![Bundle Size](https://img.shields.io/bundlephobia/minzip/hono-ban)](https://bundlephobia.com/result?p=hono-ban)
-[![codecov](https://codecov.io/github/ali-issa/hono-ban/graph/badge.svg)](https://codecov.io/github/ali-issa/hono-ban)
-
-## Requirements
-
-- [Hono.js](https://hono.dev) ^4.7.0
-- TypeScript ^5.7.3
-- [@hono/zod-openapi](https://github.com/honojs/middleware/tree/main/packages/zod-openapi) ^0.9.6 (optional)
 
 ## Installation
 
 ```bash
-npm install @hono-ban/core
+npm install hono-ban
 ```
 
 ## Features
@@ -32,7 +25,7 @@ npm install @hono-ban/core
 ### Basic Error Creation
 
 ```typescript
-import { Ban } from "@hono-ban/core";
+import { Ban } from "hono-ban";
 
 // Create a 404 Not Found error
 const error = Ban.notFound("User not found");
@@ -49,7 +42,7 @@ const validationError = Ban.badRequest("Invalid input", {
 
 ```typescript
 import { Hono } from "hono";
-import { Ban } from "@hono-ban/core";
+import { Ban } from "hono-ban";
 
 const app = new Hono();
 
@@ -65,7 +58,7 @@ app.onError((err, c) => {
 ### Custom Error Formatting
 
 ```typescript
-import { Ban, ErrorFormatter } from "@hono-ban/core";
+import { Ban, ErrorFormatter } from "hono-ban";
 
 class CustomFormatter implements ErrorFormatter {
   readonly contentType = "application/json";
