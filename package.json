@@ -1,0 +1,38 @@
+{
+  "name": "hono-ban-monorepo",
+  "description": "Monorepo for hono-ban",
+  "version": "0.1.0",
+  "private": true,
+  "module": "index.ts",
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "bun --filter '*' build",
+    "test": "bun --filter '*' test",
+    "test:coverage": "bun --filter '*' test --coverage",
+    "clean": "bun --filter '*' clean"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "rimraf": "^6.0.1"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "bun": ">=1.0.0",
+    "node": ">=18.0.0"
+  },
+  "author": "Ali Issa <ali@issa.cm> (https://github.com/ali-issa)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ali-issa/hono-ban.git"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "homepage": "https://github.com/ali-issa/hono-ban.git"
+}
