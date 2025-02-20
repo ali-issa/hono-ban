@@ -103,6 +103,8 @@ export interface Ban<T = unknown> {
  * Interface for error formatters that control how errors are serialized.
  * Formatters convert Ban errors into specific output formats (e.g., JSON, XML).
  *
+ * See the {@link DefaultFormatter} class in `src/lib/formatter.ts` for the default implementation.
+ *
  * @template T - The output type of the formatter, must be a record type
  * @interface ErrorFormatter
  * @property {string} contentType - MIME type for the formatted error output

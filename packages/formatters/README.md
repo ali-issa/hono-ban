@@ -2,9 +2,7 @@
 
 Official formatters package for hono-ban, providing implementations of common error specification formats.
 
-[![npm version](https://badge.fury.io/js/@hono-ban/formatters.svg)](https://badge.fury.io/js/@hono-ban/formatters)
-[![Bundle Size](https://img.shields.io/bundlephobia/min/@hono-ban/formatters)](https://bundlephobia.com/result?p=@hono-ban/formatters)
-[![Bundle Size](https://img.shields.io/bundlephobia/minzip/@hono-ban/formatters)](https://bundlephobia.com/result?p=@hono-ban/formatters)
+[![npm version](https://badge.fury.io/js/@hono-ban%2Fformatters.svg)](https://badge.fury.io/js/@hono-ban%2Fformatters)
 
 ## Installation
 
