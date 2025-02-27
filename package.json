@@ -1,6 +1,6 @@
 {
   "name": "hono-ban",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "HTTP-friendly error objects for Hono, inspired by Boom",
   "type": "module",
   "main": "dist/cjs/index.js",
@@ -37,11 +37,11 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun run build:esm && bun run build:cjs && bun run build:declaration",
-    "build:esm": "bun build --target=node --format=esm --packages=external --outdir=dist/esm --sourcemap=linked --splitting ./src/index.ts ./src/formatters/rfc7807/index.ts",
-    "build:cjs": "bun build --target=node --format=cjs --packages=external --outdir=dist/cjs --sourcemap=linked --splitting ./src/index.ts ./src/formatters/rfc7807/index.ts",
+    "build:esm": "bun build --target=node --format=esm --packages=external --outdir=dist/esm --sourcemap=linked ./src/index.ts && bun build --target=node --format=esm --packages=external --outdir=dist/esm/formatters --sourcemap=linked ./src/formatters/rfc7807/index.ts",
+    "build:cjs": "bun build --target=node --format=cjs --packages=external --outdir=dist/cjs --sourcemap=linked ./src/index.ts && bun build --target=node --format=cjs --packages=external --outdir=dist/cjs/formatters --sourcemap=linked ./src/formatters/rfc7807/index.ts",
     "build:declaration": "tsc --emitDeclarationOnly --project tsconfig.types.json",
     "postbuild": "rimraf tsconfig.types.tsbuildinfo",
-    "dev": "bun build --target=node --packages=external --outdir=dist --watch ./src/index.ts ./src/formatters/rfc7807/index.ts",
+    "dev": "bun build --target=node --packages=external --outdir=dist --watch ./src/index.ts",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
