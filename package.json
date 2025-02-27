@@ -1,6 +1,6 @@
 {
   "name": "hono-ban",
-  "version": "0.2.1",
+  "version": "0.2.4",
   "description": "HTTP-friendly error objects for Hono, inspired by Boom",
   "type": "module",
   "main": "dist/cjs/index.js",
@@ -37,11 +37,11 @@
   "sideEffects": false,
   "scripts": {
     "build": "bun run build:esm && bun run build:cjs && bun run build:declaration",
-    "build:esm": "bun build --target=node ./src/index.ts --outfile=dist/esm/index.js --format=esm --external hono --external @hono/zod-openapi",
-    "build:cjs": "bun build --target=node ./src/index.ts --outfile=dist/cjs/index.js --format=cjs --external hono --external @hono/zod-openapi",
+    "build:esm": "bun build --target=node --format=esm --packages=external --outdir=dist/esm --sourcemap=linked --splitting ./src/index.ts ./src/formatters/rfc7807/index.ts",
+    "build:cjs": "bun build --target=node --format=cjs --packages=external --outdir=dist/cjs --sourcemap=linked --splitting ./src/index.ts ./src/formatters/rfc7807/index.ts",
     "build:declaration": "tsc --emitDeclarationOnly --project tsconfig.types.json",
     "postbuild": "rimraf tsconfig.types.tsbuildinfo",
-    "dev": "bun build src/index.ts --outdir dist --target node --watch",
+    "dev": "bun build --target=node --packages=external --outdir=dist --watch ./src/index.ts ./src/formatters/rfc7807/index.ts",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
