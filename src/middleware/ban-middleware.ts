@@ -53,21 +53,34 @@ export function ban(options: BanMiddlewareOptions = {}): MiddlewareHandler {
     try {
       await next();
     } catch (err) {
-      // Get the pre-resolved formatter instance
-      const formatter = resolvedOptions.formatter;
-
+      // Convert to BanError with middleware options as fallback
       const error = convertToBanError(err, {
-        formatter,
+        formatter: resolvedOptions.formatter,
         headers: resolvedOptions.headers,
         sanitize: resolvedOptions.sanitize,
         includeStackTrace: resolvedOptions.includeStackTrace,
       });
 
-      // Format the error using pre-resolved options
+      // Use error's formatter if available, otherwise use middleware formatter
+      const formatter = error.formatter || resolvedOptions.formatter;
+
+      // Merge sanitize arrays, prioritizing error's sanitize fields
+      const sanitize = [
+        ...(resolvedOptions.sanitize || []),
+        ...(error.sanitize || []),
+      ];
+
+      // Use error's includeStackTrace if defined, otherwise use middleware's
+      const includeStackTrace =
+        error.includeStackTrace !== undefined
+          ? error.includeStackTrace
+          : resolvedOptions.includeStackTrace;
+
+      // Format the error using the determined options
       const formatted = formatError(error, formatter, {
-        headers: resolvedOptions.headers,
-        sanitize: resolvedOptions.sanitize,
-        includeStackTrace: resolvedOptions.includeStackTrace,
+        headers: error.headers || resolvedOptions.headers,
+        sanitize,
+        includeStackTrace,
       });
 
       // Create and return response

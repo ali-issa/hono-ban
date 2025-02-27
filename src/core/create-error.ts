@@ -58,6 +58,19 @@ export function createError<T = unknown>(options: BanOptions<T>): BanError<T> {
     }
   }
 
+  // Add formatter options
+  if (options.formatter) {
+    error.formatter = options.formatter;
+  }
+
+  if (options.sanitize) {
+    error.sanitize = [...options.sanitize];
+  }
+
+  if (options.includeStackTrace !== undefined) {
+    error.includeStackTrace = options.includeStackTrace;
+  }
+
   // Always capture a fresh stack trace for the BanError itself
   Error.captureStackTrace(error, createError);
 

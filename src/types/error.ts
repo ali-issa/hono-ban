@@ -7,6 +7,7 @@ import type {
   ClientErrorStatusCode,
   ServerErrorStatusCode,
 } from "hono/utils/http-status";
+import type { ErrorFormatter } from "./formatter";
 
 /**
  * Valid HTTP error status codes (4xx and 5xx)
@@ -43,4 +44,13 @@ export interface BanError<T = unknown> {
 
   /** Type guard identifier */
   readonly isBan: true;
+
+  /** Custom error formatter */
+  formatter?: ErrorFormatter;
+
+  /** Fields to remove from output */
+  sanitize?: readonly string[];
+
+  /** Whether to include stack trace */
+  includeStackTrace?: boolean;
 }

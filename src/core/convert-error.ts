@@ -50,6 +50,17 @@ export function convertToBanError<T = unknown>(
         : err.allow,
       cause: options.cause ?? err.cause,
       stack: err.stack,
+      causeStack: err.causeStack,
+
+      // Add formatter options, preserving existing ones if present
+      formatter: err.formatter ?? options.formatter,
+      sanitize: err.sanitize
+        ? [...(err.sanitize || []), ...(options.sanitize || [])]
+        : options.sanitize,
+      includeStackTrace:
+        err.includeStackTrace !== undefined
+          ? err.includeStackTrace
+          : options.includeStackTrace,
     };
 
     return merged;
