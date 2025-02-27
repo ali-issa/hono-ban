@@ -6,7 +6,8 @@
 
 HTTP-friendly error objects for [Hono](https://hono.dev), inspired by [Boom](https://github.com/hapijs/boom).
 
-> **Warning**: This package is not production-ready. It is under active development with daily updates and could change significantly.
+> [!WARNING]  
+> This package is not production-ready. It is under active development with daily updates and could change significantly.
 
 ## Table of Contents
 
