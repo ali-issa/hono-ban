@@ -1,13 +1,14 @@
 {
   "name": "hono-ban",
-  "version": "0.2.7",
+  "version": "0.2.6",
   "description": "HTTP-friendly error objects for Hono, inspired by Boom",
   "type": "module",
   "main": "dist/esm/index.js",
   "types": "dist/types/index.d.ts",
   "files": [
     "dist/*",
-    "LICENSE.md"
+    "LICENSE.md",
+    "README.md"
   ],
   "exports": {
     ".": {
