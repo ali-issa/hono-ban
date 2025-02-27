@@ -56,11 +56,8 @@ export function createErrorResponse(
     // Create a sanitized version without sensitive data
     const sanitizedFormatted = {
       statusCode: error.status,
-      payload: {
-        statusCode: error.status,
-        error: STATUS_CODES[error.status],
-        message: "An internal server error occurred",
-      },
+      error: STATUS_CODES[error.status],
+      message: "An internal server error occurred",
     };
 
     return new Response(JSON.stringify(sanitizedFormatted), {

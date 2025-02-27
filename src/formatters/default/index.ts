@@ -8,7 +8,7 @@ import type { BanError, DefaultErrorOutput, Headers } from "../../types";
 import { sanitizeObject } from "../../utils";
 
 /**
- * Default JSON formatter maintaining backward compatibility
+ * Default JSON formatter with a clean, flat structure
  */
 export const defaultFormatter = {
   contentType: "application/json",
@@ -28,15 +28,15 @@ export const defaultFormatter = {
   ): DefaultErrorOutput {
     const { status, message, data } = error;
 
-    // Build base payload
-    const payload: DefaultErrorOutput["payload"] = {
+    // Build base output
+    const output: DefaultErrorOutput = {
       statusCode: status,
       error: STATUS_CODES[status] || "Unknown Error",
     };
 
     // Add optional fields
     if (typeof message === "string") {
-      payload.message = message;
+      output.message = message;
     }
 
     const isDeveloperError =
@@ -47,26 +47,18 @@ export const defaultFormatter = {
 
     if (includeStackTrace || isDeveloperError) {
       if (error.stack) {
-        payload.stack = error.stack;
+        output.stack = error.stack;
       }
       if (error.causeStack) {
-        payload.causeStack = error.causeStack;
+        output.causeStack = error.causeStack;
       }
     }
 
     if (data !== undefined) {
-      payload.data = data;
+      output.data = data;
     }
 
-    // Create output structure
-    const output: DefaultErrorOutput = {
-      statusCode: status,
-      payload: sanitizeObject(
-        payload,
-        sanitize
-      ) as DefaultErrorOutput["payload"],
-    };
-
-    return output;
+    // Apply sanitization to the entire output
+    return sanitizeObject(output, sanitize) as DefaultErrorOutput;
   },
 };

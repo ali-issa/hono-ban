@@ -306,7 +306,7 @@ hono-ban includes several built-in formatters for common error response formats.
 
 ### Default Formatter
 
-The default formatter produces a simple JSON structure with status code, error name, and optional message and data.
+The default formatter produces a clean, flat JSON structure with status code, error name, and optional message and data.
 
 ```typescript
 import { defaultFormatter } from "hono-ban";
@@ -314,12 +314,9 @@ import { defaultFormatter } from "hono-ban";
 // Example output:
 // {
 //   "statusCode": 400,
-//   "payload": {
-//     "statusCode": 400,
-//     "error": "Bad Request",
-//     "message": "Invalid input",
-//     "data": { "field": "email" }
-//   }
+//   "error": "Bad Request",
+//   "message": "Invalid input",
+//   "data": { "field": "email" }
 // }
 ```
 

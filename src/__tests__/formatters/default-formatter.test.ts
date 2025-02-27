@@ -14,11 +14,8 @@ describe("defaultFormatter", () => {
 
     expect(formatted).toEqual({
       statusCode: 404,
-      payload: {
-        statusCode: 404,
-        error: STATUS_CODES[404],
-        message: "Not found",
-      },
+      error: STATUS_CODES[404],
+      message: "Not found",
     });
   });
 
@@ -48,7 +45,7 @@ describe("defaultFormatter", () => {
     const error = createError({ statusCode: 500 });
     const formatted = defaultFormatter.format(error, {}, [], true);
 
-    expect(formatted.payload.stack).toBeDefined();
+    expect(formatted.stack).toBeDefined();
   });
 
   it("includes stack trace for developer errors", () => {
@@ -59,7 +56,7 @@ describe("defaultFormatter", () => {
 
     const formatted = defaultFormatter.format(error);
 
-    expect(formatted.payload.stack).toBeDefined();
+    expect(formatted.stack).toBeDefined();
   });
 
   it("includes cause stack when available", () => {
@@ -71,7 +68,7 @@ describe("defaultFormatter", () => {
 
     const formatted = defaultFormatter.format(error, {}, [], true);
 
-    expect(formatted.payload.causeStack).toBeDefined();
+    expect(formatted.causeStack).toBeDefined();
   });
 
   it("includes error data when provided", () => {
@@ -83,7 +80,7 @@ describe("defaultFormatter", () => {
 
     const formatted = defaultFormatter.format(error);
 
-    expect(formatted.payload.data).toEqual(data);
+    expect(formatted.data).toEqual(data);
   });
 
   it("sanitizes specified fields", () => {
@@ -106,7 +103,7 @@ describe("defaultFormatter", () => {
     const formatted = defaultFormatter.format(error, {}, ["password", "token"]);
 
     // Data should be sanitized
-    expect(formatted.payload.data).toEqual({
+    expect(formatted.data).toEqual({
       user: {
         id: 123,
         email: "user@example.com",

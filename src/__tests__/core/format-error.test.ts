@@ -96,10 +96,8 @@ describe("createErrorResponse", () => {
 
       const formatted = {
         statusCode: 500,
-        payload: {
-          message: "Original error message",
-          data: { sensitiveInfo: "secret" },
-        },
+        message: "Original error message",
+        data: { sensitiveInfo: "secret" },
       };
 
       const response = createErrorResponse(error, formatted);
@@ -108,18 +106,15 @@ describe("createErrorResponse", () => {
       const responseText = await response.text();
       const body = JSON.parse(responseText) as {
         statusCode: number;
-        payload: {
-          statusCode: number;
-          error: string;
-          message: string;
-          data?: unknown;
-        };
+        error: string;
+        message: string;
+        data?: unknown;
       };
 
       // Should use sanitized message
-      expect(body.payload.message).toBe("An internal server error occurred");
+      expect(body.message).toBe("An internal server error occurred");
       // Should not include sensitive data
-      expect(body.payload.data).toBeUndefined();
+      expect(body.data).toBeUndefined();
     } finally {
       // Restore original NODE_ENV
       process.env.NODE_ENV = originalNodeEnv;
@@ -140,10 +135,8 @@ describe("createErrorResponse", () => {
 
       const formatted = {
         statusCode: 500,
-        payload: {
-          message: "Detailed error",
-          data: { details: "stack trace" },
-        },
+        message: "Detailed error",
+        data: { details: "stack trace" },
       };
 
       const response = createErrorResponse(error, formatted);

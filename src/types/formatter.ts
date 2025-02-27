@@ -8,34 +8,31 @@ import type { Headers } from "./common";
 
 /**
  * Default error output structure
+ *
+ * A simple, flat structure for error responses that follows common API practices
+ * while remaining minimal and extensible.
  */
 export interface DefaultErrorOutput {
   /** HTTP status code */
   statusCode: number;
 
-  /** Formatted error payload */
-  payload: {
-    /** HTTP status code */
-    statusCode: number;
+  /** Error name from status code */
+  error: string;
 
-    /** Error name from status code */
-    error: string;
+  /** Error message if provided */
+  message?: string;
 
-    /** Error message if provided */
-    message?: string;
+  /** Stack trace if enabled */
+  stack?: string;
 
-    /** Stack trace if enabled */
-    stack?: string;
+  /** Cause stack trace if available */
+  causeStack?: string;
 
-    /** Cause stack trace if available */
-    causeStack?: string;
+  /** Additional error data */
+  data?: unknown;
 
-    /** Additional error data */
-    data?: unknown;
-
-    /** Any other properties */
-    [key: string]: unknown;
-  };
+  /** Any other properties */
+  [key: string]: unknown;
 }
 
 /**
