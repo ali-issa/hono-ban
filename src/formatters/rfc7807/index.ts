@@ -5,16 +5,16 @@
 
 export {
   createRFC7807Formatter,
-  createValidationError,
-  createZodValidationError,
-  createConstraintViolation,
+  createRFC7807ValidationError,
+  createRFC7807ZodValidationError,
+  createRFC7807ConstraintViolation,
 } from "./formatter";
 
 export { createRFC7807Hook, rfc7807Hook } from "./hooks";
 
 export {
-  ValidationParamSchema,
-  ConstraintViolationSchema,
-  ProblemErrorDataSchema,
-  ProblemDetailsSchema,
+  RFC7807ValidationParamSchema,
+  RFC7807ConstraintViolationSchema,
+  RFC7807ErrorDataSchema,
+  RFC7807DetailsSchema,
 } from "./schemas";

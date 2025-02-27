@@ -17,6 +17,7 @@ HTTP-friendly error objects for [Hono](https://hono.dev), inspired by [Boom](htt
   - [Custom Error Data](#custom-error-data)
   - [Error Conversion](#error-conversion)
   - [Error Formatting](#error-formatting)
+  - [OpenAPI Integration](#openapi-integration)
 - [Formatters](#formatters)
   - [Default Formatter](#default-formatter)
   - [RFC7807 (Problem Details) Formatter](#rfc7807-problem-details-formatter)
@@ -55,7 +56,14 @@ hono-ban provides a comprehensive error handling solution for Hono.js applicatio
 ### Basic Usage
 
 ```typescript
-import { notFound, badRequest } from "hono-ban";
+import { Hono } from "hono";
+import ban, { notFound, badRequest } from "hono-ban";
+
+// Create a Hono app
+const app = new Hono();
+
+// IMPORTANT: Add the ban middleware for error handling to work
+app.use(ban());
 
 // Create a 404 Not Found error
 const error = notFound("User not found");
@@ -66,9 +74,19 @@ const validationError = badRequest("Invalid input", {
     invalidFields: ["email", "password"],
   },
 });
+
+// Example route that throws an error
+app.get("/users/:id", (c) => {
+  // The thrown error will be caught and formatted by the ban middleware
+  throw notFound(`User with ID ${c.req.param("id")} not found`);
+});
 ```
 
+> **Note**: The ban middleware is required for errors to be automatically caught and formatted. Without it, thrown errors won't be properly handled.
+
 ### Error Middleware
+
+The ban middleware is **required** to catch and format errors thrown in your routes. Without this middleware, errors will not be properly handled.
 
 #### Basic Usage
 
@@ -80,6 +98,7 @@ import { notFound } from "hono-ban";
 const app = new Hono();
 
 // Add the error handling middleware with default options
+// This is REQUIRED for error handling to work
 app.use(ban());
 
 // Routes can throw errors that will be handled automatically
@@ -189,6 +208,96 @@ const formatted = formatError(banError, myFormatter, {
 const response = createErrorResponse(banError, formatted);
 ```
 
+### OpenAPI Integration
+
+hono-ban integrates seamlessly with [@hono/zod-openapi](https://github.com/honojs/middleware/tree/main/packages/zod-openapi) to provide standardized error handling for OpenAPI-validated routes.
+
+```typescript
+import { OpenAPIHono } from "@hono/zod-openapi";
+import { ban, createRFC7807Formatter, rfc7807Hook } from "hono-ban";
+import { RFC7807DetailsSchema } from "hono-ban/formatters/rfc7807";
+import { createRoute, z } from "@hono/zod-openapi";
+import type { Context } from "hono";
+import type { Env } from "./config/env";
+
+// Create an OpenAPIHono instance with the RFC7807 hook for validation errors
+const app = new OpenAPIHono<Env>({ defaultHook: rfc7807Hook });
+
+// IMPORTANT: Add the ban middleware with RFC7807 formatter
+app.use(
+  ban({
+    formatter: createRFC7807Formatter({
+      baseUrl: "https://api.example.com/errors",
+    }),
+  })
+);
+
+// Define a schema for your data
+const NoteSchema = z.object({
+  name: z.string().max(10),
+});
+
+// Create an OpenAPI route with error handling
+const route = createRoute({
+  method: "post",
+  path: "/notes",
+  request: {
+    body: {
+      content: {
+        "application/json": {
+          schema: NoteSchema,
+        },
+      },
+      required: true,
+    },
+  },
+  responses: {
+    200: {
+      description: "Successfully created note",
+      content: {
+        "application/json": {
+          schema: z.object({
+            data: z.object({
+              id: z.string(),
+              type: z.string(),
+              attributes: NoteSchema,
+            }),
+          }),
+        },
+      },
+    },
+    400: {
+      description: "Validation error",
+      content: {
+        "application/json": {
+          schema: RFC7807DetailsSchema, // Use the RFC7807 schema for errors
+        },
+      },
+    },
+  },
+});
+
+// Register the route
+app.openapi(route, async (c) => {
+  // Handle the request
+  // Any validation errors will be automatically formatted using RFC7807
+  return c.json({
+    data: {
+      /* response data */
+    },
+  });
+});
+```
+
+#### Key Benefits
+
+1. **Automatic Validation Error Handling**: The `rfc7807Hook` automatically converts Zod validation errors to RFC7807 format.
+2. **Standardized Error Responses**: All errors follow the RFC7807 specification.
+3. **OpenAPI Documentation**: Error schemas are properly documented in your OpenAPI specification.
+4. **Type Safety**: Full TypeScript support for request and response validation.
+
+> **Note**: The ban middleware is still required when using OpenAPI integration. The `rfc7807Hook` handles validation errors, but the middleware is needed to catch and format other errors.
+
 ## Formatters
 
 hono-ban includes several built-in formatters for common error response formats.
@@ -274,21 +383,7 @@ The RFC7807 formatter provides several helper functions:
 - `createValidationError(params)`: Create validation error data
 - `createZodValidationError(error)`: Convert Zod validation errors to RFC7807 format
 - `createConstraintViolation(name, reason, resource, constraint)`: Create constraint violation data
-- `createRFC7807Hook(options)`: Create a Hono hook for Zod OpenAPI validation
-
-```typescript
-import { createRFC7807Hook } from "hono-ban/formatters/rfc7807";
-import { OpenAPIHono } from "@hono/zod-openapi";
-
-const app = new OpenAPIHono();
-
-// Add the RFC7807 hook for validation errors
-app.openapi(
-  createRFC7807Hook({
-    baseUrl: "https://api.example.com/problems",
-  })
-);
-```
+- `createRFC7807Hook(options)`: Create a Hono hook for Zod OpenAPI validation (see [OpenAPI Integration](#openapi-integration) for usage)
 
 ## API Reference
 

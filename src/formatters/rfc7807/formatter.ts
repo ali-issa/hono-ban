@@ -7,15 +7,15 @@ import { z } from "@hono/zod-openapi";
 import { STATUS_CODES } from "../../constants";
 import type { BanError, ErrorFormatter } from "../../types";
 import type {
-  ProblemDetails,
-  ProblemErrorData,
-  ValidationParam,
+  RFC7807Details,
+  RFC7807ErrorData,
+  RFC7807ValidationParam,
   RFC7807FormatterOptions as RFC7807Options,
 } from "../../types";
 import {
-  ConstraintViolationSchema,
-  ProblemDetailsSchema,
-  ValidationParamSchema,
+  RFC7807ConstraintViolationSchema,
+  RFC7807DetailsSchema,
+  RFC7807ValidationParamSchema,
 } from "./schemas";
 
 /**
@@ -29,7 +29,7 @@ export function createRFC7807Formatter(
   return {
     contentType: "application/problem+json",
 
-    format<T extends ProblemErrorData>(error: BanError<T>): ProblemDetails {
+    format<T extends RFC7807ErrorData>(error: BanError<T>): RFC7807Details {
       const base = {
         type: `${baseUrl}/${error.status}`,
         title: STATUS_CODES[error.status] || "Unknown Error",
@@ -41,7 +41,7 @@ export function createRFC7807Formatter(
 
       // Handle validation errors
       if (error.data?.["invalid-params"]) {
-        return ProblemDetailsSchema.parse({
+        return RFC7807DetailsSchema.parse({
           ...base,
           "invalid-params": error.data["invalid-params"],
         });
@@ -49,13 +49,13 @@ export function createRFC7807Formatter(
 
       // Handle constraint violations
       if (error.data?.violations) {
-        return ProblemDetailsSchema.parse({
+        return RFC7807DetailsSchema.parse({
           ...base,
           violations: error.data.violations,
         });
       }
 
-      return ProblemDetailsSchema.parse(base);
+      return RFC7807DetailsSchema.parse(base);
     },
   };
 }
@@ -63,18 +63,18 @@ export function createRFC7807Formatter(
 /**
  * Create validation error data in RFC 7807 format
  */
-export function createValidationError(params: ValidationParam[]) {
+export function createRFC7807ValidationError(params: RFC7807ValidationParam[]) {
   return {
-    "invalid-params": ValidationParamSchema.array().parse(params),
+    "invalid-params": RFC7807ValidationParamSchema.array().parse(params),
   };
 }
 
 /**
  * Convert Zod validation errors to RFC 7807 format
  */
-export function createZodValidationError(error: z.ZodError) {
+export function createRFC7807ZodValidationError(error: z.ZodError) {
   return {
-    "invalid-params": ValidationParamSchema.array().parse(
+    "invalid-params": RFC7807ValidationParamSchema.array().parse(
       error.errors.map((e) => ({
         name: e.path.join("."),
         reason: e.message,
@@ -86,14 +86,14 @@ export function createZodValidationError(error: z.ZodError) {
 /**
  * Create constraint violation data in RFC 7807 format
  */
-export function createConstraintViolation(
+export function createRFC7807ConstraintViolation(
   name: string,
   reason: string,
   resource: string,
   constraint: string = "unique"
 ) {
   return {
-    violations: ConstraintViolationSchema.array().parse([
+    violations: RFC7807ConstraintViolationSchema.array().parse([
       {
         name,
         reason,
