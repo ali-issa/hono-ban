@@ -1,47 +1,32 @@
 {
   "name": "hono-ban",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "HTTP-friendly error objects for Hono, inspired by Boom",
   "type": "module",
-  "main": "dist/cjs/index.js",
-  "module": "dist/esm/index.js",
+  "main": "dist/esm/index.js",
   "types": "dist/types/index.d.ts",
   "files": [
     "dist/*",
-    "src",
     "LICENSE.md",
     "README.md"
   ],
   "exports": {
     ".": {
-      "import": {
-        "types": "./dist/types/index.d.ts",
-        "default": "./dist/esm/index.js"
-      },
-      "require": {
-        "types": "./dist/types/index.d.ts",
-        "default": "./dist/cjs/index.js"
-      }
+      "types": "./dist/types/index.d.ts",
+      "default": "./dist/esm/index.js"
     },
     "./formatters/rfc7807": {
-      "import": {
-        "types": "./dist/types/formatters/rfc7807/index.d.ts",
-        "default": "./dist/esm/formatters/rfc7807/index.js"
-      },
-      "require": {
-        "types": "./dist/types/formatters/rfc7807/index.d.ts",
-        "default": "./dist/cjs/formatters/rfc7807/index.js"
-      }
+      "types": "./dist/types/formatters/rfc7807/index.d.ts",
+      "default": "./dist/esm/formatters/rfc7807/index.js"
     }
   },
   "sideEffects": false,
   "scripts": {
-    "build": "bun run build:esm && bun run build:cjs && bun run build:declaration",
-    "build:esm": "bun build --target=node --format=esm --packages=external --outdir=dist/esm --sourcemap=linked ./src/index.ts && bun build --target=node --format=esm --packages=external --outdir=dist/esm/formatters --sourcemap=linked ./src/formatters/rfc7807/index.ts",
-    "build:cjs": "bun build --target=node --format=cjs --packages=external --outdir=dist/cjs --sourcemap=linked ./src/index.ts && bun build --target=node --format=cjs --packages=external --outdir=dist/cjs/formatters --sourcemap=linked ./src/formatters/rfc7807/index.ts",
+    "build": "bun run build:esm && bun run build:declaration",
+    "build:esm": "bun build --target=node --format=esm --packages=external --outdir=dist/esm --minify ./src/index.ts && bun build --target=node --format=esm --packages=external --outdir=dist/esm/formatters --minify ./src/formatters/rfc7807/index.ts",
     "build:declaration": "tsc --emitDeclarationOnly --project tsconfig.types.json",
     "postbuild": "rimraf tsconfig.types.tsbuildinfo",
-    "dev": "bun build --target=node --packages=external --outdir=dist --watch ./src/index.ts",
+    "dev": "bun build --target=node --format=esm --packages=external --outdir=dist/esm --watch ./src/index.ts",
     "test": "bun test",
     "test:watch": "bun test --watch",
     "test:coverage": "bun test --coverage",
