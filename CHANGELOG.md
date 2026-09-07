@@ -1,5 +1,36 @@
 # hono-ban
 
+## 1.1.0
+
+### Minor Changes
+
+- [`95a62e1`](https://github.com/ali-issa/hono-ban/commit/95a62e17f663f5f30522eda7fb76d4ef63b3487c) Thanks [@ali-issa](https://github.com/ali-issa)! - Validate options at construction instead of producing broken responses.
+  
+  - `problemDetails()` throws `TypeError` when `traceIdMember` names a reserved member (`status`,
+    `id`, `errors`, ...) or is not an RFC 9457 extension member name; `jsonApi()` rejects a
+    `traceIdMetaKey` the format writes itself (`stack`, `location`, `code`, ...) or that is not a
+    JSON:API member name; `googleApi()` rejects a `traceIdMetadataKey` outside the
+    `ErrorInfo.metadata` key grammar. Previously `traceIdMember: 'status'` replaced the numeric status
+    with the trace id.
+  - `ban.onError()` throws `TypeError` when `errorIdHeader`, `requestIdHeader`, or `headers` holds a
+    name or value `Headers` rejects. Previously the failure surfaced inside the handler's last-resort
+    fallback and the handler rejected.
+  - `googleApi()` drops `meta` keys that do not match `[a-z][a-zA-Z0-9-_]+` or exceed 64 characters,
+    as `error_details.proto` requires for `ErrorInfo.metadata`, and the 2020-12 schema states the rule
+    with `propertyNames`. Keys such as `order.id` or `UserId` were previously sent as-is.
+
+### Patch Changes
+
+- [`95a62e1`](https://github.com/ali-issa/hono-ban/commit/95a62e17f663f5f30522eda7fb76d4ef63b3487c) Thanks [@ali-issa](https://github.com/ali-issa)! - Keep every rendered validation body inside its own schema and the handler inside its guarantee.
+  
+  - `jsonApi()` renders one summary error object for `ban.validation([])` instead of an empty `errors`
+    array its schema rejects; `googleApi()` omits `BadRequest` when there are no issues instead of
+    sending an empty `fieldViolations`.
+  - `assertFormatConformance` from `hono-ban/testing` now also renders a validation error with no
+    issues per location.
+  - `ban.onError()` gains a third fallback tier: when the header merge itself throws, the response
+    still carries `Content-Type`, `Cache-Control: no-store`, and the error id header.
+
 ## 1.0.0
 
 ### Major Changes
