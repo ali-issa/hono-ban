@@ -204,7 +204,35 @@ describe('googleApi().render', () => {
   });
 });
 
+describe('googleApi() options', () => {
+  it('rejects a traceIdMetadataKey outside the metadata key grammar or written from meta', () => {
+    for (const key of ['TraceId', 'trace.id', 't', '', '__proto__']) {
+      expect(() =>
+        googleApi({ domain: DOMAIN, traceIdMetadataKey: key }),
+      ).toThrow(TypeError);
+    }
+    expect(() =>
+      googleApi({ domain: DOMAIN, traceIdMetadataKey: 'location' }),
+    ).toThrow(new TypeError('traceIdMetadataKey "location" is reserved'));
+    expect(() =>
+      googleApi({ domain: DOMAIN, traceIdMetadataKey: 'trace-id' }),
+    ).not.toThrow();
+  });
+});
+
 describe('googleApi().renderValidation', () => {
+  it('omits BadRequest for an empty issue list and keeps the validation message', () => {
+    const ban = createBan({ format: googleApi({ domain: DOMAIN }) });
+    const rendered = body(
+      ban.render(ban.validation([], { location: 'query' })).body,
+    );
+    expect(rendered.error.message).toBe('Request validation failed');
+    expect(rendered.error.details.map((detail) => detail['@type'])).toEqual([
+      'type.googleapis.com/google.rpc.ErrorInfo',
+      'type.googleapis.com/google.rpc.RequestInfo',
+    ]);
+  });
+
   it('adds one BadRequest with a field violation per issue', () => {
     const ban = createBan({ format: googleApi({ domain: DOMAIN }) });
     const error = ban.validation(

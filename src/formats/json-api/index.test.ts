@@ -122,12 +122,54 @@ describe('jsonApi().renderValidation', () => {
     });
   });
 
+  it('renders one summary object for an empty issue list so the document matches its schema', () => {
+    const error = ban.validation([], { location: 'body' });
+    const rendered = render(error, { traceId: 't1' });
+    expect(rendered.errors).toEqual([
+      {
+        id: error.id,
+        links: { type: 'https://errors.example.com/VALIDATION_FAILED' },
+        status: '422',
+        code: 'VALIDATION_FAILED',
+        title: 'Validation Failed',
+        detail: 'Request validation failed',
+        meta: { location: 'body', traceId: 't1' },
+      },
+    ]);
+    const validate = compileWithAjv(
+      jsonApi().validationSchema(ban.catalog.VALIDATION_FAILED, {
+        docsBaseUrl: 'https://errors.example.com',
+        dialect: 'draft-2020-12',
+      }),
+    );
+    expect(validate(rendered)).toEqual([]);
+    expect(
+      render(ban.validation([], { location: 'body', detail: 'Nope' })).errors[0]
+        ?.detail,
+    ).toBe('Nope');
+  });
+
   it('describes path and cookie parameters in meta because JSON:API has no source member for them', () => {
     for (const location of ['param', 'cookie'] as const) {
       const [object] = render(ban.validation(issues, { location })).errors;
       expect(object).not.toHaveProperty('source');
       expect(object?.meta).toMatchObject({ location, name: 'items' });
     }
+  });
+});
+
+describe('jsonApi() options', () => {
+  it('rejects a traceIdMetaKey the format writes itself or that is not a member name', () => {
+    for (const key of ['stack', 'location', 'name', 'code', 'expected']) {
+      expect(() => jsonApi({ traceIdMetaKey: key })).toThrow(
+        new TypeError(`traceIdMetaKey "${key}" is reserved`),
+      );
+    }
+    for (const key of ['', '-trace', 'trace-', 'trace.id', '__proto__']) {
+      expect(() => jsonApi({ traceIdMetaKey: key })).toThrow(TypeError);
+    }
+    expect(() => jsonApi({ traceIdMetaKey: 'trace-id' })).not.toThrow();
+    expect(() => jsonApi({ traceIdMetaKey: 'x' })).not.toThrow();
   });
 });
 

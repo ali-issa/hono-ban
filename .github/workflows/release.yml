@@ -9,6 +9,12 @@
 #     creates a GitHub release;
 #   - `none`: nothing to do (running `version` here would open an empty PR).
 #
+# The CI workflow runs on the same push but as a separate workflow, so a
+# publish would not wait for it. The publish job therefore repeats the gates
+# on the exact commit it publishes (build, checks, unit and e2e suites) and
+# stops before `changeset publish` when any of them fail. The runtime smoke
+# tests stay in CI: they need Bun and Deno.
+#
 # Publishing uses npm trusted publishing (OIDC): no NPM_TOKEN secret. pnpm
 # publish exchanges the GitHub id-token for a short-lived npm token and npm
 # attaches provenance automatically. One-time setup on npmjs.com for the
@@ -92,6 +98,13 @@ jobs:
         with:
           node-version-file: .node-version
       - run: pnpm install --frozen-lockfile
+      # Gates on the commit being published; see the header comment. Same
+      # order as CONTRIBUTING.md: build first because the type-aware lint of
+      # e2e/ and the package checks read dist/.
+      - run: pnpm run build
+      - run: pnpm run check
+      - run: pnpm run test
+      - run: pnpm run test:e2e
       - uses: changesets/action/publish@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
           script: pnpm run release

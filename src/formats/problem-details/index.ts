@@ -12,7 +12,11 @@ import type { JsonSchema, RenderContext, SchemaContext } from '../context';
 import type { ErrorFormat } from '../types';
 import type { ValidationEntry } from '../validation-entries';
 
-import { VALIDATION_DETAIL } from '../../internal/constants';
+import {
+  EXTENSION_NAME_PATTERN,
+  VALIDATION_DETAIL,
+} from '../../internal/constants';
+import { assertMemberName } from '../../internal/member-name';
 import { flattenMeta } from '../extension-members';
 import { constant } from '../schema-helpers';
 import {
@@ -185,8 +189,13 @@ function baseSchema(
 }
 
 /**
- * RFC 9457 Problem Details, the default format.
+ * RFC 9457 Problem Details, the default format. Throws `TypeError` when
+ * `traceIdMember` names a reserved member (7.1.2) or falls outside the
+ * extension member grammar (`EXTENSION_NAME_PATTERN`): `renderBase` writes
+ * the trace id after the library members and before the standard ones win,
+ * so `'status'` would replace the numeric status and `'id'` the error id.
  * @ref https://www.rfc-editor.org/rfc/rfc9457
+ * @ref https://www.rfc-editor.org/rfc/rfc9457#section-4
  */
 export function problemDetails(
   options: ProblemDetailsOptions = {},
@@ -198,6 +207,17 @@ export function problemDetails(
     traceIdMember: options.traceIdMember ?? 'traceId',
     instance: options.instance ?? true,
   };
+  if (
+    resolved.traceIdMember !== false &&
+    resolved.traceIdMember !== 'traceId'
+  ) {
+    assertMemberName(
+      'traceIdMember',
+      resolved.traceIdMember,
+      RESERVED_MEMBERS,
+      EXTENSION_NAME_PATTERN,
+    );
+  }
   return {
     name: 'problem-details',
     contentType: PROBLEM_DETAILS_CONTENT_TYPE,

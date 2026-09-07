@@ -18,6 +18,7 @@ import {
   DEBUG_INFO_TYPE,
   ERROR_INFO_TYPE,
   HELP_TYPE,
+  METADATA_KEY_PATTERN,
   REQUEST_INFO_TYPE,
   RETRY_INFO_TYPE,
 } from './details';
@@ -45,6 +46,24 @@ function detail(
   };
 }
 
+/**
+ * `metadata` keys follow the `error_details.proto` grammar the renderer
+ * enforces. `propertyNames` states it in JSON Schema 2020-12; the OpenAPI
+ * 3.0 schema object has neither it nor `patternProperties`, so that dialect
+ * types the values only.
+ * @ref https://json-schema.org/draft/2020-12/json-schema-core#name-propertynames
+ * @ref https://spec.openapis.org/oas/v3.0.3#properties
+ */
+function metadata(dialect: SchemaDialect): JsonSchema {
+  return {
+    type: 'object',
+    ...(dialect === 'openapi-3.0'
+      ? {}
+      : { propertyNames: { pattern: METADATA_KEY_PATTERN.source } }),
+    additionalProperties: STRING,
+  };
+}
+
 function errorInfo(
   definition: ResolvedDefinition,
   ctx: SchemaContext,
@@ -56,7 +75,7 @@ function errorInfo(
     {
       reason: constant(definition.code, ctx.dialect),
       domain: constant(options.domain, ctx.dialect),
-      metadata: { type: 'object', additionalProperties: STRING },
+      metadata: metadata(ctx.dialect),
     },
     ['reason', 'domain'],
   );

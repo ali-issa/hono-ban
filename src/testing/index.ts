@@ -11,7 +11,7 @@ import type {
   RenderOptions,
 } from '../formats/context';
 import type { ErrorFormat } from '../formats/types';
-import type { IssueLocation } from '../validation/issue';
+import type { IssueLocation, ValidationIssue } from '../validation/issue';
 
 import { BanError as BanErrorClass, isBanError } from '../core/ban-error';
 
@@ -127,6 +127,11 @@ function cases(
  * body against the schema the format claims for it (SPEC 7.4). Throws an
  * `AggregateError` listing every failure.
  */
+const VALIDATION_ISSUES: ReadonlyArray<ValidationIssue> = [
+  { path: ['email'], message: 'Invalid email', code: 'invalid_format' },
+  { path: ['items', 0, 'sku'], message: 'Required' },
+];
+
 export function assertFormatConformance(
   format: ErrorFormat,
   catalog: Readonly<Record<string, ResolvedDefinition>>,
@@ -153,29 +158,32 @@ export function assertFormatConformance(
       format.validationSchema(definition, schemaCtx),
     );
     for (const location of LOCATIONS) {
-      const error = new BanErrorClass({
-        status: definition.status,
-        code: definition.code,
-        title: definition.title,
-        type: definition.type,
-        definition,
-        meta: { location },
-        issues: [
-          { path: ['email'], message: 'Invalid email', code: 'invalid_format' },
-          { path: ['items', 0, 'sku'], message: 'Required' },
-        ],
-      });
-      const body = format.renderValidation(error, error.issues ?? [], {
-        ...CONTEXT,
-        meta: error.meta,
-      });
-      const problems = validateValidation(body);
-      if (problems.length > 0) {
-        failures.push(
-          new Error(
-            `${format.name} ${definition.key} validation/${location}: ${problems.join('; ')}`,
-          ),
-        );
+      // Two issues, then none: `ban.validation([])` is legal, and a format
+      // whose schema demands at least one entry must still render a body
+      // that conforms.
+      for (const issues of [VALIDATION_ISSUES, []]) {
+        const error = new BanErrorClass({
+          status: definition.status,
+          code: definition.code,
+          title: definition.title,
+          type: definition.type,
+          definition,
+          meta: { location },
+          issues,
+        });
+        const body = format.renderValidation(error, issues, {
+          ...CONTEXT,
+          meta: error.meta,
+        });
+        const problems = validateValidation(body);
+        if (problems.length > 0) {
+          const label = issues.length === 0 ? 'validation-empty' : 'validation';
+          failures.push(
+            new Error(
+              `${format.name} ${definition.key} ${label}/${location}: ${problems.join('; ')}`,
+            ),
+          );
+        }
       }
     }
   }

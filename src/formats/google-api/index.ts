@@ -19,12 +19,14 @@ import type { GoogleApiDetail, GoogleApiErrorInfo } from './details';
 import type { GoogleRpcCode } from './rpc-code';
 
 import { VALIDATION_DETAIL } from '../../internal/constants';
+import { assertMemberName } from '../../internal/member-name';
 import {
   BAD_REQUEST_TYPE,
   DEBUG_INFO_TYPE,
   ERROR_INFO_TYPE,
   fieldViolation,
   help,
+  METADATA_KEY_PATTERN,
   REQUEST_INFO_TYPE,
   retryInfo,
   toMetadata,
@@ -89,6 +91,13 @@ export interface GoogleApiBody {
  */
 export const GOOGLE_API_CONTENT_TYPE = 'application/json';
 
+/**
+ * `metadata` keys written from `ctx.meta` that a `traceIdMetadataKey` of the
+ * same name would silently replace: `location` carries the validation target
+ * (SPEC 8.2).
+ */
+const RESERVED_METADATA_KEYS: ReadonlySet<string> = new Set(['location']);
+
 interface Resolved {
   readonly domain: string;
   readonly rpcCodes: Readonly<Record<string, GoogleRpcCode>> | undefined;
@@ -138,7 +147,10 @@ function renderBody(
   issues?: ReadonlyArray<ValidationIssue>,
 ): GoogleApiBody {
   const details: Array<GoogleApiDetail> = [errorInfo(error, ctx, options)];
-  if (issues !== undefined) {
+  // proto3 JSON omits an empty repeated field and the schema requires
+  // `fieldViolations`, so a validation error without issues has no
+  // `BadRequest`; `message` still says validation failed.
+  if (issues !== undefined && issues.length > 0) {
     details.push({
       '@type': BAD_REQUEST_TYPE,
       fieldViolations: issues.map((issue) => fieldViolation(issue)),
@@ -174,7 +186,9 @@ function renderBody(
 }
 
 /**
- * AIP-193 Google API errors (SPEC 7.6).
+ * AIP-193 Google API errors (SPEC 7.6). Throws `TypeError` when
+ * `traceIdMetadataKey` falls outside the `ErrorInfo.metadata` key grammar
+ * or names a key the format writes from `ctx.meta`.
  * @ref https://google.aip.dev/193
  */
 export function googleApi(
@@ -187,6 +201,14 @@ export function googleApi(
     traceIdMetadataKey: options.traceIdMetadataKey ?? 'traceId',
     includeRequestInfo: options.includeRequestInfo ?? true,
   };
+  if (resolved.traceIdMetadataKey !== false) {
+    assertMemberName(
+      'traceIdMetadataKey',
+      resolved.traceIdMetadataKey,
+      RESERVED_METADATA_KEYS,
+      METADATA_KEY_PATTERN,
+    );
+  }
   const schemaOptions = {
     domain: resolved.domain,
     rpcCodes: resolved.rpcCodes,

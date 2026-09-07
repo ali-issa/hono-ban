@@ -24,8 +24,8 @@ const SCHEMA_CTX = {
   docsBaseUrl: undefined,
   dialect: 'draft-2020-12',
 } as const;
-/** SPEC 7.4: three rendered cases plus one validation body per location. */
-const CASES_PER_DEFINITION = 3 + 6;
+/** SPEC 7.4: three rendered cases plus two validation bodies (two issues, none) per location. */
+const CASES_PER_DEFINITION = 3 + 6 * 2;
 /** A compiler whose validator rejects every body, to observe failure handling. */
 const rejectAll = (): SchemaValidator => () => ['rejected'];
 

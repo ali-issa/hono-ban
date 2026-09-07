@@ -162,6 +162,56 @@ describe('ban.onError mapping and fallback', () => {
     });
   });
 
+  it('rejects header options Headers would reject, at construction', () => {
+    expect(() => ban.onError({ errorIdHeader: 'X Error Id' })).toThrow(
+      new TypeError(
+        'errorIdHeader "X Error Id" is not a valid HTTP header name',
+      ),
+    );
+    expect(() => ban.onError({ requestIdHeader: 'bad\nname' })).toThrow(
+      TypeError,
+    );
+    expect(() => ban.onError({ headers: { 'X Static': 'yes' } })).toThrow(
+      new TypeError('headers holds an invalid header name or value'),
+    );
+    expect(() => ban.onError({ headers: { 'X-Static': 'a\r\nb' } })).toThrow(
+      TypeError,
+    );
+    expect(() =>
+      ban.onError({
+        errorIdHeader: false,
+        requestIdHeader: false,
+        headers: new Headers({ 'X-Static': 'yes' }),
+      }),
+    ).not.toThrow();
+  });
+
+  it('still responds with the error id when the header merge itself fails', async () => {
+    // Passes the construction-time check, then throws on every later read,
+    // so the main path and both fallback tiers fail in `mergeHeaders`.
+    let reads = 0;
+    const headers = {
+      get 'X-Static'(): string {
+        reads += 1;
+        if (reads > 1) {
+          throw new Error('headers gone');
+        }
+        return 'yes';
+      },
+    };
+    const { app, reports } = build(ban, { headers });
+    const response = await app.request('/not-found');
+    expect(response.status).toBe(500);
+    expect(response.headers.get('content-type')).toBe('application/json');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('x-static')).toBeNull();
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(response.headers.get('x-error-id')).toBe(body['id']);
+    expect(reports[0]?.handlerFailure).toMatchObject({
+      message: 'headers gone',
+    });
+  });
+
   it('still responds when onReport throws, and never rejects', async () => {
     const { app } = build(ban, {
       onReport: () => {

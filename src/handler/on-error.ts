@@ -13,7 +13,6 @@ import type { RenderOptions } from '../formats/context';
 
 import { BanError as BanErrorClass } from '../core/ban-error';
 import {
-  DEFAULT_CACHE_CONTROL,
   DEFAULT_ERROR_ID_HEADER,
   DEFAULT_MAX_BODY_BYTES,
   DEFAULT_REQUEST_ID_HEADER,
@@ -21,14 +20,18 @@ import {
 } from '../internal/constants';
 import { safeStringify } from '../internal/json';
 import { capBody } from './body-cap';
+import {
+  assertHeaderName,
+  assertHeadersInit,
+  lastResortHeaders,
+  mergeHeaders,
+} from './headers';
 import { buildReport } from './report';
 import { readRequestId } from './request-id';
 import { resolveThrown } from './resolve';
 import { parseTraceparent } from './traceparent';
 
 const SERVER_ERROR = 500;
-const SET_COOKIE = 'set-cookie';
-const CACHE_CONTROL = 'cache-control';
 
 interface Trace {
   readonly traceId: string | undefined;
@@ -44,39 +47,6 @@ function readTrace<E extends Env>(
   }
   const parsed = parseTraceparent(c.req.header('traceparent'));
   return { traceId: parsed?.traceId, spanId: parsed?.parentId };
-}
-
-/**
- * Header precedence (SPEC 6.9): `Cache-Control: no-store` as the floor, then
- * options, then the error's, then ours. `Set-Cookie` is the one header whose
- * values never combine: iteration yields each cookie separately, so `set()`
- * would keep only the last one. Cookies are appended instead, from both
- * sources.
- * @ref https://fetch.spec.whatwg.org/#concept-header-list-sort-and-combine
- * @ref https://fetch.spec.whatwg.org/#dom-headers-getsetcookie
- */
-function mergeHeaders(
-  base: HeadersInit | undefined,
-  rendered: Headers,
-  errorIdHeader: string | false,
-  id: string,
-): Headers {
-  const headers = new Headers(base);
-  if (!headers.has(CACHE_CONTROL)) {
-    headers.set(CACHE_CONTROL, DEFAULT_CACHE_CONTROL);
-  }
-  rendered.forEach((value, name) => {
-    if (name !== SET_COOKIE) {
-      headers.set(name, value);
-    }
-  });
-  for (const cookie of rendered.getSetCookie()) {
-    headers.append(SET_COOKIE, cookie);
-  }
-  if (errorIdHeader !== false) {
-    headers.set(errorIdHeader, id);
-  }
-  return headers;
 }
 
 /**
@@ -145,9 +115,8 @@ async function fallback<E extends Env, TErrors extends Catalog>(
       }),
       {
         status: SERVER_ERROR,
-        headers: mergeHeaders(
+        headers: lastResortHeaders(
           options.headers,
-          new Headers({ 'Content-Type': 'application/json' }),
           options.errorIdHeader ?? DEFAULT_ERROR_ID_HEADER,
           error.id,
         ),
@@ -173,8 +142,9 @@ async function fallback<E extends Env, TErrors extends Catalog>(
 }
 
 /**
- * Builds `ban.onError()` (SPEC 6). The returned handler resolves to a
- * `Response` for every input and never rejects (ADR 0002).
+ * Builds `ban.onError()` (SPEC 6). Throws `TypeError` for a header option
+ * `Headers` would reject; the returned handler resolves to a `Response` for
+ * every input and never rejects (ADR 0002).
  */
 export function createOnError<TErrors extends Catalog>(
   core: BanCore,
@@ -193,6 +163,9 @@ export function createOnError<TErrors extends Catalog>(
       options.requestIdHeader ?? DEFAULT_REQUEST_ID_HEADER;
     const errorIdHeader = options.errorIdHeader ?? DEFAULT_ERROR_ID_HEADER;
     const maxBodyBytes = options.maxBodyBytes ?? DEFAULT_MAX_BODY_BYTES;
+    assertHeaderName('requestIdHeader', requestIdHeader);
+    assertHeaderName('errorIdHeader', errorIdHeader);
+    assertHeadersInit(options.headers);
 
     return async (thrown: unknown, c: Context<E>): Promise<Response> => {
       try {

@@ -178,20 +178,24 @@ describe('hono-ban/testing helpers used by a consumer', () => {
     }
     expect(caught).toBeInstanceOf(AggregateError);
     const aggregate = caught as AggregateError;
-    // SPEC 7.4: three render cases plus one validation case per location.
-    expect(aggregate.message).toBe('broken failed 18 conformance check(s)');
+    // SPEC 7.4: three render cases plus two validation cases (two issues,
+    // none) for each of the six locations: 15 per definition.
+    expect(aggregate.message).toBe('broken failed 30 conformance check(s)');
     const messages = aggregate.errors.map((entry) => (entry as Error).message);
     expect(
       messages.filter((m) => m.startsWith('broken NOT_FOUND ')),
-    ).toHaveLength(9);
+    ).toHaveLength(15);
     expect(
       messages.filter((m) => m.startsWith('broken CONFLICT ')),
-    ).toHaveLength(9);
+    ).toHaveLength(15);
     expect(messages[0]).toBe(
       "broken NOT_FOUND minimal: / must have required property 'status'",
     );
     expect(messages).toContainEqual(
       expect.stringMatching(/^broken CONFLICT validation\/cookie: /u),
+    );
+    expect(messages).toContainEqual(
+      expect.stringMatching(/^broken CONFLICT validation-empty\/cookie: /u),
     );
   });
 });

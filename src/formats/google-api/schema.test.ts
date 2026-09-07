@@ -14,6 +14,13 @@ function body(value: unknown): GoogleApiBody {
   return value as GoogleApiBody;
 }
 
+/** Reads one member of a schema node without asserting its shape. */
+function node(value: unknown, key: string): unknown {
+  return typeof value === 'object' && value !== null
+    ? (value as Record<string, unknown>)[key]
+    : undefined;
+}
+
 describe('googleApi() schemas', () => {
   const ban = createBan({
     format: googleApi({ domain: DOMAIN }),
@@ -40,6 +47,51 @@ describe('googleApi() schemas', () => {
         { compile: compileWithAjv },
       );
     }).not.toThrow();
+  });
+
+  it('constrain metadata keys in 2020-12 and only their values in OpenAPI 3.0', () => {
+    const format = googleApi({ domain: DOMAIN });
+    const read = (dialect: 'draft-2020-12' | 'openapi-3.0'): unknown => {
+      const schema = format.schema(ban.catalog.NOT_FOUND, {
+        docsBaseUrl: undefined,
+        dialect,
+      });
+      const error = node(node(schema, 'properties'), 'error');
+      const details = node(node(error, 'properties'), 'details');
+      const anyOf = node(node(details, 'items'), 'anyOf') as Array<unknown>;
+      return node(node(anyOf[0], 'properties'), 'metadata');
+    };
+    expect(read('draft-2020-12')).toEqual({
+      type: 'object',
+      propertyNames: { pattern: '^[a-z][a-zA-Z0-9_-]{1,63}$' },
+      additionalProperties: { type: 'string' },
+    });
+    expect(read('openapi-3.0')).toEqual({
+      type: 'object',
+      additionalProperties: { type: 'string' },
+    });
+    const validate = compileWithAjv(
+      format.schema(ban.catalog.NOT_FOUND, schemaCtx),
+    );
+    const rendered = body(
+      ban.render(ban.notFound({ meta: { 'order.id': '7', orderId: '7' } }))
+        .body,
+    );
+    expect(rendered.error.details[0]).toMatchObject({
+      metadata: { orderId: '7' },
+    });
+    expect(validate(rendered)).toEqual([]);
+    expect(
+      validate({
+        ...rendered,
+        error: {
+          ...rendered.error,
+          details: [
+            { ...rendered.error.details[0], metadata: { 'order.id': '7' } },
+          ],
+        },
+      }),
+    ).not.toEqual([]);
   });
 
   it('pin code, status, reason, and domain and stay closed', () => {

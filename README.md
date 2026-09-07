@@ -61,6 +61,18 @@ order.total; // narrowed: Order
 Factories return errors and never throw them, so a bare `ban.notFound()` statement is a no-op. The
 `no-unused-expressions` rule (ESLint core, typescript-eslint, oxlint) flags the missing `throw`.
 
+### Unmatched routes
+
+Hono answers a request no route matches from its own `notFound` handler with a plain-text 404, not
+through `onError`. Throwing from `app.notFound` routes it through the handler, so unmatched routes
+carry the same body, `X-Error-Id`, and report as every other error:
+
+```ts
+app.notFound(() => {
+  throw ban.notFound();
+});
+```
+
 ### Your own errors
 
 ```ts
@@ -135,7 +147,9 @@ Content-Type: application/vnd.api+json
 
 `googleApi()` renders the AIP-193 shape Google's APIs use. It needs the `ErrorInfo.domain` AIP-193
 requires; `status` comes from the catalog code when it names a `google.rpc.Code`, else from the HTTP
-status, and `rpcCodes` overrides it per code.
+status, and `rpcCodes` overrides it per code. `meta` becomes `ErrorInfo.metadata`, whose keys must
+match `[a-z][a-zA-Z0-9-_]+` and stay under 64 characters (`error_details.proto`); a key outside that
+grammar (`order.id`, `UserId`) is dropped rather than sent.
 
 ```ts
 import { googleApi } from 'hono-ban/formats/google-api';
@@ -305,7 +319,8 @@ app.onError(
 );
 ```
 
-Every response carries `X-Error-Id`; the same id is in the body and in the report.
+Every response carries `X-Error-Id`; the same id is in the report and, for every built-in format
+except Stripe (whose shape has no member for it), in the body.
 
 ### Localize or redact
 

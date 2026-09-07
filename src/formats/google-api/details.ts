@@ -90,9 +90,20 @@ export type GoogleApiDetail =
   | GoogleApiHelp;
 
 /**
+ * `ErrorInfo.metadata` keys "must match a regular expression of
+ * `[a-z][a-zA-Z0-9-_]+`" and "must be limited to 64 characters in length"
+ * (the comment on the field in `error_details.proto`).
+ * @ref https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto
+ */
+export const METADATA_KEY_PATTERN: RegExp = /^[a-z][a-zA-Z0-9_-]{1,63}$/u;
+
+/**
  * `ErrorInfo.metadata` is `map<string, string>`, so every value becomes a
  * string: strings as they are, everything else as JSON. Values JSON cannot
- * represent (`undefined`, functions, symbols) are dropped.
+ * represent (`undefined`, functions, symbols) are dropped, and so is every
+ * key outside `METADATA_KEY_PATTERN` (`order.id`, `UserId`): a key the
+ * grammar rejects would make the body fail the schema, and throwing here
+ * would turn the error being rendered into a 500 (SPEC 7.6.2).
  * @ref https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto
  */
 export function toMetadata(
@@ -100,6 +111,9 @@ export function toMetadata(
 ): Record<string, string> {
   const metadata: Record<string, string> = {};
   for (const key of Object.keys(meta)) {
+    if (!METADATA_KEY_PATTERN.test(key)) {
+      continue;
+    }
     const value = meta[key];
     if (typeof value === 'string') {
       metadata[key] = value;

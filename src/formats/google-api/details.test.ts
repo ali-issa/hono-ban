@@ -33,6 +33,29 @@ describe('toMetadata', () => {
   });
 });
 
+describe('toMetadata keys', () => {
+  it('drops keys outside the error_details.proto grammar', () => {
+    expect(
+      toMetadata({
+        orderId: '7',
+        'order-id': '7',
+        order_id: '7',
+        'order.id': 'dropped',
+        UserId: 'dropped',
+        _private: 'dropped',
+        x: 'dropped',
+        ['a'.repeat(64)]: 'kept',
+        ['a'.repeat(65)]: 'dropped',
+      }),
+    ).toEqual({
+      orderId: '7',
+      'order-id': '7',
+      order_id: '7',
+      ['a'.repeat(64)]: 'kept',
+    });
+  });
+});
+
 describe('fieldPath', () => {
   // @ref https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto (BadRequest.FieldViolation.field)
   it.each([

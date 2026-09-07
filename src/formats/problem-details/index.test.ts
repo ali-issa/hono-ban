@@ -156,6 +156,23 @@ describe('problemDetails().render', () => {
   });
 });
 
+describe('problemDetails() options', () => {
+  it('rejects a traceIdMember that is reserved or not an extension member name', () => {
+    for (const member of ['status', 'id', 'errors', 'stack', 'detail']) {
+      expect(() => problemDetails({ traceIdMember: member })).toThrow(
+        new TypeError(`traceIdMember "${member}" is reserved`),
+      );
+    }
+    for (const member of ['', 'x', '1st', 'trace-id', '__proto__']) {
+      expect(() => problemDetails({ traceIdMember: member })).toThrow(
+        TypeError,
+      );
+    }
+    expect(() => problemDetails({ traceIdMember: 'traceId' })).not.toThrow();
+    expect(() => problemDetails({ traceIdMember: 'trace_id' })).not.toThrow();
+  });
+});
+
 describe('problemDetails().renderValidation', () => {
   it('adds an errors array and a default detail', () => {
     const error = new BanError({

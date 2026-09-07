@@ -80,7 +80,9 @@ src/
     validation-entries.ts      ValidationEntry, toValidationEntries(), readLocation(), VALIDATION_ENTRIES_SCHEMA
     define-format.ts           defineFormat() (7.5)
     problem-details/index.ts   7.1
-    json-api/index.ts          7.2
+    json-api/
+      index.ts                 jsonApi(), JsonApiOptions, JsonApiBody (7.2)
+      schema.ts                bodySchema() (7.2.3)
     plain/index.ts             7.3
     google-api/
       index.ts                 googleApi(), GoogleApiOptions, GoogleApiBody (7.6)
@@ -91,7 +93,8 @@ src/
   headers/
     bearer-challenge.ts        bearerChallenge(), BearerChallengeOptions (3.2)
   handler/
-    on-error.ts                createOnError(): the pipeline (6.2), fallback (6.4), header merge (6.9)
+    on-error.ts                createOnError(): the pipeline (6.2), fallback (6.4)
+    headers.ts                 mergeHeaders() (6.9), assertHeaderName(), assertHeadersInit(), lastResortHeaders() (6.4)
     resolve.ts                 resolveThrown() (6.3)
     request-id.ts              readRequestId() (6.5)
     traceparent.ts             parseTraceparent(), TraceContext (6.6)
@@ -483,6 +486,14 @@ export interface HandlerOptions<E extends Env = Env, TErrors extends Catalog = C
 }
 ```
 
+`ban.onError()` itself throws `TypeError` when `requestIdHeader` or `errorIdHeader` is not a valid
+HTTP field name or when `headers` holds a name or value the `Headers` constructor rejects
+(`headers.ts`). `Headers` throws the same `TypeError` from `set()` and from its constructor; checked
+once at construction, the mistake fails at startup instead of inside the header merge (6.9) that
+both fallback tiers share, where it would affect every response. @ref
+https://fetch.spec.whatwg.org/#dom-headers-set @ref
+https://fetch.spec.whatwg.org/#concept-headers-fill
+
 ### 6.1 Guarantees
 
 - Resolves to a `Response` for every `Error` Hono hands it; never throws or rejects.
@@ -536,10 +547,14 @@ throws `TypeError` (a handler failure). Without a mapping the value goes through
 2. If that throws too (the format is broken), respond with a hand-built `application/json` body
    `{ status: 500, title: 'Internal Server Error', detail, id }`. The header merge (6.9) still
    applies, so `options.headers` and the error id header are present (10.2).
+3. If the merge itself throws (`options.headers` changed or started throwing after the construction
+   check), `lastResortHeaders` answers with `Content-Type`, `Cache-Control: no-store`, and the error
+   id header only; the header name was validated at construction, so this tier cannot throw.
 
 Then report once with `handled: false` and `handlerFailure` set. Tests: a throwing format, a
 throwing `map`, a `map` returning a non-`BanError`, a throwing `onReport` (the resolved status is
-kept, not turned into 500).
+kept, not turned into 500), a `headers` getter that throws after construction (tier 3 keeps the id
+in the header), header options rejected at construction.
 
 ### 6.5 Request id (`request-id.ts`)
 
@@ -660,6 +675,12 @@ export interface ProblemDetailsOptions {
 `contentType = 'application/problem+json'`, no `charset` parameter. @ref
 https://www.rfc-editor.org/rfc/rfc9457#section-3
 
+`problemDetails()` throws `TypeError` (`internal/member-name.ts`) when `traceIdMember` is a reserved
+member name other than `traceId` (7.1.2), a `PROTO_KEYS` entry, or does not match
+`EXTENSION_NAME_PATTERN`: `renderBase` writes the trace id after the library members and the
+standard members are spread last, so `'status'` would replace the numeric status and `'id'` the
+error id, and a name outside the grammar is not an extension member by the format's own rule.
+
 #### 7.1.1 `render`
 
 Emitted order: `type`, `status` (number), `title`, `detail` (when defined), `instance` (when enabled
@@ -735,6 +756,12 @@ export interface JsonApiOptions {
 `contentType = 'application/vnd.api+json'` without parameters. @ref
 https://jsonapi.org/format/#content-negotiation-servers
 
+`jsonApi()` throws `TypeError` when `traceIdMetaKey` is a `meta` key the format writes itself
+(`stack`, `location`, `name`, `code`, `expected`, `received`), a `PROTO_KEYS` entry, or not a
+JSON:API member name (at least one character; starts and ends with a letter, digit, or a code point
+at U+0080 or above; `-`, `_`, and space allowed in between). @ref
+https://jsonapi.org/format/#document-member-names
+
 #### 7.2.1 `render`
 
 `{ errors: [errorObject] }` with members in this order, omitting undefined ones: `id`, `links`
@@ -749,9 +776,12 @@ One error object per issue sharing `id`, `status`, `code`, and `title`, with
 `detail = issue.message`, `source` = `{ pointer }` for `body` and `form`, `{ parameter }` for
 `query`, `{ header }` for `header`, omitted for `param` and `cookie` (JSON:API defines no member for
 them), and `meta` = shared meta plus `location`, `name` (param and cookie only), `code`, `expected`,
-`received`. @ref https://jsonapi.org/format/#errors-processing
+`received`. An empty issue list renders one error object with
+`detail = error.detail ?? 'Request validation failed'`, no `source`, and `meta` = shared meta plus
+`location`, because `errors` must hold at least one object (7.2.3). @ref
+https://jsonapi.org/format/#errors-processing
 
-#### 7.2.3 `schema`
+#### 7.2.3 `schema` (`schema.ts`)
 
 Closed body `{ errors: [ErrorObject, ...] }`; error objects require `status`, `code`, `title`,
 constrain them to the definition's values (`status` as a string), type `links` (`type` and `about`
@@ -773,9 +803,10 @@ assertFormatConformance(format, catalog, { compile, docsBaseUrl? })
 
 `compile(schema)` returns a validator `(body) => problems[]`; the repository uses Ajv 2020 with
 `ajv-formats` (`src/test-support/ajv.ts`). For every definition it renders a minimal error, one with
-`detail`, colliding and short `meta` keys, nested meta, and headers, one with a stack, and a
-validation error per location, then validates each body against `schema` or `validationSchema`
-(dialect `draft-2020-12`). Failures are collected into one `AggregateError`.
+`detail`, colliding and short `meta` keys, nested meta, and headers, one with a stack, and per
+location a validation error with two issues and one with none (`ban.validation([])` is legal, and a
+schema that demands at least one entry must still be met), then validates each body against `schema`
+or `validationSchema` (dialect `draft-2020-12`). Failures are collected into one `AggregateError`.
 
 ### 7.5 `defineFormat` (`define-format.ts`)
 
@@ -813,6 +844,10 @@ list, empty map) are omitted. @ref https://google.aip.dev/193#http11json-represe
 https://github.com/googleapis/googleapis/blob/master/google/rpc/error_details.proto @ref
 https://protobuf.dev/programming-guides/json/
 
+`googleApi()` throws `TypeError` when `traceIdMetadataKey` does not match `METADATA_KEY_PATTERN`
+(7.6.2), is `location` (written from `ctx.meta` for validation errors, 8.2), or is a `PROTO_KEYS`
+entry.
+
 #### 7.6.1 `status` (`rpc-code.ts`)
 
 Resolution order per entry: `rpcCodes[code]`; else the catalog `code` itself when it names a
@@ -831,32 +866,39 @@ https://github.com/googleapis/gax-nodejs/blob/main/gax/src/status.ts
 `detail`, else `'Request validation failed'`), `status`, `details`. Payloads in order, each type at
 most once as AIP-193 requires:
 
-| Payload       | When                                              | Members                                                                                                                                                                                                                                                              |
-| ------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ErrorInfo`   | always                                            | `reason` = catalog `code`; `domain` = the option; `metadata` = `ctx.meta` with every value a string (strings verbatim, bigint decimal, everything else JSON; `undefined`, functions, and symbols dropped) plus `[traceIdMetadataKey]` when known, omitted when empty |
-| `BadRequest`  | validation                                        | `fieldViolations`, one per issue: `field` = the path in proto JSON path syntax (`items[0].sku`; omitted for an empty path), `description` = the message, `reason` = the issue code upper-cased when present                                                          |
-| `RetryInfo`   | the error's `Retry-After` header is delay-seconds | `retryDelay` = `${seconds}s`; the HTTP-date form needs the current time and formats are pure, so it is not converted                                                                                                                                                 |
-| `RequestInfo` | `includeRequestInfo`                              | `requestId` = the error id (10.2 coherence)                                                                                                                                                                                                                          |
-| `DebugInfo`   | `ctx.stack` defined                               | `stackEntries` = the stack split on newlines                                                                                                                                                                                                                         |
-| `Help`        | a documentation URL exists and is absolute        | one link `{ description: 'Documentation for ${code} errors', url }` with `url` = `error.type`, else `${helpLinkBaseUrl ?? ctx.docsBaseUrl}/${code}`; AIP-193 requires an absolute URL with a scheme, so a relative one yields no `Help`                              |
+| Payload       | When                                              | Members                                                                                                                                                                                                                                                                                                                    |
+| ------------- | ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ErrorInfo`   | always                                            | `reason` = catalog `code`; `domain` = the option; `metadata` = `ctx.meta` with every value a string (strings verbatim, bigint decimal, everything else JSON; `undefined`, functions, and symbols dropped) and every key outside `METADATA_KEY_PATTERN` dropped, plus `[traceIdMetadataKey]` when known, omitted when empty |
+| `BadRequest`  | validation with at least one issue                | `fieldViolations`, one per issue: `field` = the path in proto JSON path syntax (`items[0].sku`; omitted for an empty path), `description` = the message, `reason` = the issue code upper-cased when present; proto3 JSON omits an empty repeated field, so no issues means no `BadRequest`                                 |
+| `RetryInfo`   | the error's `Retry-After` header is delay-seconds | `retryDelay` = `${seconds}s`; the HTTP-date form needs the current time and formats are pure, so it is not converted                                                                                                                                                                                                       |
+| `RequestInfo` | `includeRequestInfo`                              | `requestId` = the error id (10.2 coherence)                                                                                                                                                                                                                                                                                |
+| `DebugInfo`   | `ctx.stack` defined                               | `stackEntries` = the stack split on newlines                                                                                                                                                                                                                                                                               |
+| `Help`        | a documentation URL exists and is absolute        | one link `{ description: 'Documentation for ${code} errors', url }` with `url` = `error.type`, else `${helpLinkBaseUrl ?? ctx.docsBaseUrl}/${code}`; AIP-193 requires an absolute URL with a scheme, so a relative one yields no `Help`                                                                                    |
 
 Validation `meta.location` (8.2) reaches `ErrorInfo.metadata.location`. `LocalizedMessage` is not
 emitted (the handler `transform` is the localization point, 6.2); `QuotaFailure`,
-`PreconditionFailure`, and `ResourceInfo` have no source in `BanError`. `reason` and the `metadata`
-keys are not validated against the AIP grammars (`[A-Z][A-Z0-9_]+[A-Z0-9]`, `[a-z][a-zA-Z0-9-_]+`);
-every built-in code conforms. @ref https://google.aip.dev/193#errorinfo @ref
-https://google.aip.dev/193#help
+`PreconditionFailure`, and `ResourceInfo` have no source in `BanError`.
+
+`METADATA_KEY_PATTERN` (`details.ts`) is `/^[a-z][a-zA-Z0-9_-]{1,63}$/u`: `error_details.proto` says
+`ErrorInfo.metadata` keys "must match a regular expression of `[a-z][a-zA-Z0-9-_]+`" and "must be
+limited to 64 characters in length". `toMetadata` drops a key outside it (`order.id`, `UserId`)
+rather than throwing, because a throw at render time would turn the error being rendered into a 500;
+the key set comes from application code, so a dropped key shows up in the application's own tests.
+`reason` is not validated against its grammar (`[A-Z][A-Z0-9_]+[A-Z0-9]`); every built-in code
+conforms. @ref https://google.aip.dev/193#errorinfo @ref https://google.aip.dev/193#help
 
 #### 7.6.3 `schema` (`schema.ts`)
 
 Closed at every level: `error` requires `code`, `message`, `status`, `details`; `code` and `status`
 are `constant()`; `details` is an array with `minItems: 1` whose `items` is an `anyOf` over the
 payload schemas, each a closed object pinning `@type` with `constant()`, `ErrorInfo` also pinning
-`reason` and `domain` and typing `metadata` as `additionalProperties: { type: 'string' }`,
-`Help.links[].url` as `format: uri`. `schema` leaves `BadRequest` out of the `anyOf`;
-`validationSchema` includes it; `RequestInfo` appears only when `includeRequestInfo`. `contains` and
-`prefixItems` would state "ErrorInfo first" but OpenAPI 3.0 has neither, so both dialects share the
-`items` form. @ref https://spec.openapis.org/oas/v3.0.3#schema-object
+`reason` and `domain` and typing `metadata` as `additionalProperties: { type: 'string' }` with
+`propertyNames: { pattern: METADATA_KEY_PATTERN }` in the 2020-12 dialect only (the OpenAPI 3.0
+schema object has neither `propertyNames` nor `patternProperties`), `Help.links[].url` as
+`format: uri`. `schema` leaves `BadRequest` out of the `anyOf`; `validationSchema` includes it;
+`RequestInfo` appears only when `includeRequestInfo`. `contains` and `prefixItems` would state
+"ErrorInfo first" but OpenAPI 3.0 has neither, so both dialects share the `items` form. @ref
+https://spec.openapis.org/oas/v3.0.3#schema-object
 
 ### 7.7 Stripe (`formats/stripe`, ADR 0014)
 
@@ -1026,6 +1068,8 @@ export interface ErrorReport {
 ### 10.2 Coherence
 
 The same `id` appears in the body, in the error id header, and in the report (`on-error.test.ts`).
+Stripe is the exception (7.7): its shape has no member for the id, which travels in the header and
+the report only.
 
 ### 10.3 `hono-ban/otel`
 
@@ -1086,23 +1130,23 @@ three. Section 14 lists the suites.
 
 Coverage thresholds (90 percent) are enforced by Vitest.
 
-| Module               | Tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `core/catalog`       | IANA completeness, title equality, alias targets, factory coverage, type mapping                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `core/definition`    | defaults, derived `type`, explicit values, unknown status title                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| `core/ban-error`     | HTTPException interop, message fallback, id, headers/meta/cause, `getResponse` both branches, `toInit`                                                                                                                                                                                                                                                                                                                                                                                     |
-| `core/factories`     | call forms, detail precedence, `TypeError`, `type`/`instance`/`id` options, `code` and `title` rejected at the type level, aliases, purity                                                                                                                                                                                                                                                                                                                                                 |
-| `core/assert`        | throws for `null`, `undefined`, `false`; passes `0`, `''`; producer laziness; narrowing types                                                                                                                                                                                                                                                                                                                                                                                              |
-| `core/from`          | passthrough, status mapping, `MALFORMED_JSON` exact match, `res` headers kept and body headers dropped, `Content-Range` kept on 416, custom and non-standard statuses, unknown values                                                                                                                                                                                                                                                                                                      |
-| `core/create-ban`    | every built-in factory, custom factories, overriding a built-in, reserved keys (runtime and types), `validationKey`, format and id generator, `custom`, `render`, typed `onError`                                                                                                                                                                                                                                                                                                          |
-| `core/render`        | meta sanitization, stack rules, explicit instance, validation branch                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `headers/*`          | `bearerChallenge` attribute order, empty-realm fallback, scope string and list, realm quoted-pairs, `TypeError` per grammar, round trip through `Headers` and a factory                                                                                                                                                                                                                                                                                                                    |
-| `handler/*`          | request id validation, traceparent grammar, body cap (transform re-applied, stack dropped), single-handler and middleware apps, bearer-auth headers, Hono validator JSON failure, constant 500, map precedence and failures, format failure fallback, `onReport` failure, transform, header merge including `Set-Cookie`, `Cache-Control` default and overrides, error id header options, request id options, traceparent into body and report, trace override, Hono rethrowing non-Errors |
-| `formats/*`          | extension flattening and precedence, Problem Details members and toggles, validation entries, plain shape, JSON:API objects and sources, closed schemas, OpenAPI 3.0 `enum`, `defineFormat` both forms and types, Google API `status` resolution, metadata stringification, field paths, `RetryInfo`, absolute-only `Help`, closed detail schemas, Stripe member order, `type` classification, first-issue `param`, Ajv conformance for all five formats                                   |
-| `validation/*`       | pointer escaping, symbols, target mapping, `ban.validation`, Zod 4 and Zod 3 issues, `zValidator` and `OpenAPIHono` hooks, Valibot issues and `vValidator`, Standard Schema issues and `sValidator`, hook type assignability                                                                                                                                                                                                                                                               |
-| `openapi`            | key and status resolution, descriptions, `RangeError`s, dialect, `anyOf` grouping and identical-schema collapse, content type, validation response, generated OpenAPI 3.1 document                                                                                                                                                                                                                                                                                                         |
-| `observability/otel` | fake and real trace APIs, invalid ids                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| `testing`            | `expectBanError` messages, `renderError`, `assertFormatConformance` on a broken format                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Module               | Tests                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `core/catalog`       | IANA completeness, title equality, alias targets, factory coverage, type mapping                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `core/definition`    | defaults, derived `type`, explicit values, unknown status title                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| `core/ban-error`     | HTTPException interop, message fallback, id, headers/meta/cause, `getResponse` both branches, `toInit`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| `core/factories`     | call forms, detail precedence, `TypeError`, `type`/`instance`/`id` options, `code` and `title` rejected at the type level, aliases, purity                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `core/assert`        | throws for `null`, `undefined`, `false`; passes `0`, `''`; producer laziness; narrowing types                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `core/from`          | passthrough, status mapping, `MALFORMED_JSON` exact match, `res` headers kept and body headers dropped, `Content-Range` kept on 416, custom and non-standard statuses, unknown values                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `core/create-ban`    | every built-in factory, custom factories, overriding a built-in, reserved keys (runtime and types), `validationKey`, format and id generator, `custom`, `render`, typed `onError`                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `core/render`        | meta sanitization, stack rules, explicit instance, validation branch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `headers/*`          | `bearerChallenge` attribute order, empty-realm fallback, scope string and list, realm quoted-pairs, `TypeError` per grammar, round trip through `Headers` and a factory                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| `handler/*`          | request id validation, traceparent grammar, body cap (transform re-applied, stack dropped), single-handler and middleware apps, bearer-auth headers, Hono validator JSON failure, constant 500, map precedence and failures, format failure fallback, header-merge failure (tier 3), header options rejected at construction, `onReport` failure, transform, header merge including `Set-Cookie`, `Cache-Control` default and overrides, error id header options, request id options, traceparent into body and report, trace override, Hono rethrowing non-Errors                                                                                   |
+| `formats/*`          | extension flattening and precedence, Problem Details members and toggles, `traceIdMember` rejected, validation entries, plain shape, JSON:API objects and sources, `traceIdMetaKey` rejected, empty issue list, closed schemas, OpenAPI 3.0 `enum`, `defineFormat` both forms and types, Google API `status` resolution, metadata stringification and key filtering, `traceIdMetadataKey` rejected, empty issue list without `BadRequest`, `propertyNames` per dialect, field paths, `RetryInfo`, absolute-only `Help`, closed detail schemas, Stripe member order, `type` classification, first-issue `param`, Ajv conformance for all five formats |
+| `validation/*`       | pointer escaping, symbols, target mapping, `ban.validation`, Zod 4 and Zod 3 issues, `zValidator` and `OpenAPIHono` hooks, Valibot issues and `vValidator`, Standard Schema issues and `sValidator`, hook type assignability                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| `openapi`            | key and status resolution, descriptions, `RangeError`s, dialect, `anyOf` grouping and identical-schema collapse, content type, validation response, generated OpenAPI 3.1 document                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `observability/otel` | fake and real trace APIs, invalid ids                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| `testing`            | `expectBanError` messages, `renderError`, `assertFormatConformance` on a broken format                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
 ### 14.1 End-to-end suite (`e2e/`)
 
@@ -1116,11 +1160,13 @@ with `fetch` and, wherever the package publishes a schema, validated with Ajv
 | `package-surface`                                                   | every subpath in section 1 resolves through `exports` and exports exactly the listed values; first HTTP round trip                                                                                                                                                                                                                                                                                                                                                   |
 | `catalog-builtins`, `catalog-custom`                                | every `FACTORY_NAMES` entry over HTTP (status, title, code, `about:blank`, `X-Error-Id`), aliases, call forms, custom entries and overrides, `custom()`, `assert()` narrowing, reserved-key and `validationKey` constructor errors                                                                                                                                                                                                                                   |
 | `handler-identity-ids`, `-reports`, `-correlation`                  | id coherence across body, header, report; `errorIdHeader`; header merge matrix including `Set-Cookie` and the `Cache-Control` default and override; deterministic ids; 20 concurrent requests; `ErrorReport` shape and `handled`; `includeStack` rules; request id and traceparent tables; `traceId` override                                                                                                                                                        |
+| `handler-not-found`                                                 | `app.notFound` throwing `ban.notFound()` reaches `onError` on both Hono dispatch paths (no handler matched; one middleware matched) with body, header, and report; matched routes untouched                                                                                                                                                                                                                                                                          |
 | `handler-resolution-from`, `-headers`, `-pipeline`, `-body`         | `from()` branches (plain `Error`, `HTTPException`, bearer-auth, malformed JSON, unknown status); an adopted response losing `Content-Length` and `Content-Encoding` but keeping `Retry-After`, a 416 keeping `Content-Range`, and a `bearerChallenge` value arriving verbatim; instance and handler `map` precedence; tier-1 and tier-2 fallback with headers; `transform` before and after the cap; `maxBodyBytes`; `onReport` once and swallowed; non-Error throws |
 | `format-problem-details-members`, `-extensions`, `-schema`          | member order, `type` derivation for four instance shapes, toggles, ADR 0008 flattening and reserved names, proto keys, bigint, validation bodies for all locations, schema equality and Ajv conformance                                                                                                                                                                                                                                                              |
 | `format-json-api`, `format-json-api-validation`                     | exact media type, error object members, `links`, nested `meta`, `traceIdMetaKey`, per-issue `source` for every location, RFC 6901 pointers, Ajv conformance                                                                                                                                                                                                                                                                                                          |
 | `format-custom-oauth`                                               | the README's OAuth 2.0 token endpoint `defineFormat` example (RFC 6749 5.2): `error`, `error_description`, `error_uri` from `code`, `detail`, `type`; `invalid_client` with the app's challenge; `bearerChallenge` pairing; conformance in both dialects                                                                                                                                                                                                             |
 | `format-google-api`, `-validation`, `-options`                      | AIP-193 member order, `status` derivation for built-in and custom codes, `ErrorInfo.metadata` strings and trace id, `RetryInfo` from `Retry-After`, `DebugInfo` under `includeStack`, absolute-only `Help`, `BadRequest` per location and issue, `validationSchema` versus `schema`, every option over HTTP, Ajv conformance, 3.0 `enum`                                                                                                                             |
+| `format-validation-empty-issues`                                    | `ban.validation([])` over HTTP for all five formats validates against `validationSchema`                                                                                                                                                                                                                                                                                                                                                                             |
 | `format-stripe`                                                     | exact serialized text in alphabetical order, `type` by status and per-code override, an unknown `Error` as `api_error` with the constant detail, first-issue `param` per location, `request_log_url`, closed schemas, Ajv conformance                                                                                                                                                                                                                                |
 | `format-plain-custom-plain`, `-define`, `-testing`                  | `plain()` body and schema, `defineFormat` hand-written and Standard JSON Schema (Zod 4) forms over HTTP, `renderError`, `expectBanError`, `assertFormatConformance` failures                                                                                                                                                                                                                                                                                         |
 | `validation-zod`, `validation-zod-direct`, `validation-zod-openapi` | `zValidator` hook for every target, pointer escaping, typed passthrough, `validationKey`, `fromZodError`, `toIssues`, `OpenAPIHono` `defaultHook` parity                                                                                                                                                                                                                                                                                                             |

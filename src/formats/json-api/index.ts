@@ -10,13 +10,15 @@ import type { IssueLocation, ValidationIssue } from '../../validation/issue';
 import type { JsonSchema, RenderContext, SchemaContext } from '../context';
 import type { ErrorFormat } from '../types';
 
+import { VALIDATION_DETAIL } from '../../internal/constants';
+import { assertMemberName } from '../../internal/member-name';
 import {
   isPointerLocation,
   nameFromPath,
   pointerFromPath,
 } from '../../validation/issue';
-import { constant } from '../schema-helpers';
 import { readLocation } from '../validation-entries';
+import { bodySchema } from './schema';
 
 export interface JsonApiOptions {
   /** Base for `links.type`; overrides the instance `docsBaseUrl`. */
@@ -67,6 +69,27 @@ export interface JsonApiBody {
  * @ref https://jsonapi.org/format/#content-negotiation-servers
  */
 export const JSON_API_CONTENT_TYPE = 'application/vnd.api+json';
+
+/**
+ * Member names: at least one character, starting and ending with a letter,
+ * digit, or a code point at U+0080 or above, with `-`, `_`, and space allowed
+ * in between.
+ * @ref https://jsonapi.org/format/#document-member-names
+ */
+const MEMBER_NAME_PATTERN =
+  /^[A-Za-z0-9\u0080-\u{10FFFF}](?:[A-Za-z0-9\u0080-\u{10FFFF} _-]*[A-Za-z0-9\u0080-\u{10FFFF}])?$/u;
+/**
+ * `meta` keys this format writes itself (7.2.1, 7.2.2); a `traceIdMetaKey`
+ * with one of these names would be overwritten or overwrite it.
+ */
+const RESERVED_META_KEYS: ReadonlySet<string> = new Set([
+  'stack',
+  'location',
+  'name',
+  'code',
+  'expected',
+  'received',
+]);
 
 interface Resolved {
   readonly typeLinkBaseUrl: string | undefined;
@@ -173,69 +196,10 @@ function issueMeta(
   return meta;
 }
 
-function errorObjectSchema(
-  definition: ResolvedDefinition,
-  ctx: SchemaContext,
-  options: Resolved,
-): JsonSchema {
-  const properties: Record<string, JsonSchema> = {
-    ...(options.includeId ? { id: { type: 'string' } } : {}),
-    // Links are URI references (RFC 3986 section 4.1), the same class RFC
-    // 9457 uses for `type`, so a relative `about` link conforms too.
-    // @ref https://jsonapi.org/format/#document-links
-    // @ref https://www.rfc-editor.org/rfc/rfc3986#section-4.1
-    links: {
-      type: 'object',
-      properties: {
-        type: { type: 'string', format: 'uri-reference' },
-        about: { type: 'string', format: 'uri-reference' },
-      },
-      additionalProperties: false,
-    },
-    status: constant(String(definition.status), ctx.dialect),
-    code: constant(definition.code, ctx.dialect),
-    title: constant(definition.title, ctx.dialect),
-    detail: { type: 'string' },
-    source: {
-      type: 'object',
-      properties: {
-        pointer: { type: 'string' },
-        parameter: { type: 'string' },
-        header: { type: 'string' },
-      },
-      additionalProperties: false,
-    },
-    meta: { type: 'object' },
-  };
-  return {
-    type: 'object',
-    required: ['status', 'code', 'title'],
-    properties,
-    additionalProperties: false,
-  };
-}
-
-function bodySchema(
-  definition: ResolvedDefinition,
-  ctx: SchemaContext,
-  options: Resolved,
-): JsonSchema {
-  return {
-    type: 'object',
-    required: ['errors'],
-    properties: {
-      errors: {
-        type: 'array',
-        minItems: 1,
-        items: errorObjectSchema(definition, ctx, options),
-      },
-    },
-    additionalProperties: false,
-  };
-}
-
 /**
- * JSON:API 1.1 error documents (SPEC 7.2).
+ * JSON:API 1.1 error documents (SPEC 7.2). Throws `TypeError` when
+ * `traceIdMetaKey` names a `meta` key the format writes itself or is not a
+ * valid member name.
  * @ref https://jsonapi.org/format/#errors
  */
 export function jsonApi(
@@ -247,6 +211,14 @@ export function jsonApi(
     includeId: options.includeId ?? true,
     traceIdMetaKey: options.traceIdMetaKey ?? 'traceId',
   };
+  if (resolved.traceIdMetaKey !== false) {
+    assertMemberName(
+      'traceIdMetaKey',
+      resolved.traceIdMetaKey,
+      RESERVED_META_KEYS,
+      MEMBER_NAME_PATTERN,
+    );
+  }
   return {
     name: 'json-api',
     contentType: JSON_API_CONTENT_TYPE,
@@ -271,6 +243,22 @@ export function jsonApi(
     ): JsonApiBody {
       const location = readLocation(ctx.meta);
       const shared = sharedMeta(ctx, resolved);
+      if (issues.length === 0) {
+        // `errors` must hold at least one object (7.2.3), so a validation
+        // error without issues renders the summary the detail would carry.
+        return {
+          errors: [
+            errorObject(
+              error,
+              ctx,
+              resolved,
+              error.detail ?? VALIDATION_DETAIL,
+              undefined,
+              { ...shared, location },
+            ),
+          ],
+        };
+      }
       return {
         errors: issues.map((issue) =>
           errorObject(
