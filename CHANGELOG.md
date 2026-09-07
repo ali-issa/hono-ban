@@ -1,5 +1,18 @@
 # hono-ban
 
+## 1.0.0
+
+### Major Changes
+
+- [`efcb0b6`](https://github.com/ali-issa/hono-ban/commit/efcb0b6bd24a598bf0e8868bff9942ec248a7868) Thanks [@ali-issa](https://github.com/ali-issa)! - First 1.0 release. `createBan()` builds a typed error catalog with a factory per IANA status and per
+  custom entry, `ban.onError()` renders every thrown value once through a pluggable format (RFC 9457
+  Problem Details by default; JSON:API, Google API (AIP-193), Stripe, and plain built in;
+  `defineFormat()` for your own), validator hooks for Zod, Valibot, and Standard Schema throw into the
+  handler, `hono-ban/openapi` derives response schemas from the active format, and `hono-ban/otel`
+  adds trace ids. Error responses carry `Cache-Control: no-store` unless you set one, and
+  `bearerChallenge()` builds RFC 6750 and RFC 9728 `WWW-Authenticate` values. `hono` is the only peer
+  dependency.
+
 ## 1.0.0-alpha.1
 
 ### Major Changes
