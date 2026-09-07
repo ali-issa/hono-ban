@@ -237,6 +237,12 @@
   },
   "overrides": [
     {
+      "files": ["e2e/smoke/checks.ts"],
+      "rules": {
+        "eslint/max-lines": "off"
+      }
+    },
+    {
       "files": [
         "**/*.spec.ts",
         "**/*.test-d.ts",

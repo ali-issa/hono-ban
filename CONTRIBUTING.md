@@ -72,11 +72,13 @@ CI runs the same commands. A pull request must be green on all of them.
 
 ## Adding a format or adapter
 
-The three extension points are wire formats (`src/formats/<name>/index.ts`, exported as
+The four extension points are wire formats (`src/formats/<name>/index.ts`, exported as
 `hono-ban/formats/<name>`), validator hooks (`src/validation/<name>.ts`, exported as
-`hono-ban/<name>`), and observability sources (`src/observability/<name>.ts`, exported as
-`hono-ban/<name>`). Formats are namespaced because several ship and a consumer picks one; hooks and
-sources are top-level because a consumer picks the one matching a library already installed.
+`hono-ban/<name>`), observability sources (`src/observability/<name>.ts`, exported as
+`hono-ban/<name>`), and database error mappers (`src/<database>/index.ts`, exported as
+`hono-ban/<database>`; `hono-ban/postgresql` is the one so far). Formats are namespaced because
+several ship and a consumer picks one; hooks, sources, and mappers are top-level because a consumer
+picks the one matching a library already installed.
 
 **What is accepted in-tree.** Open a discussion first (the issue templates link to it) so the scope
 question is settled before code exists.
@@ -94,13 +96,19 @@ question is settled before code exists.
 - An observability module supplies a request id or trace id source for `HandlerOptions`. Sinks
   (loggers, error trackers) are not adapters: `onReport` hands them the report directly, and
   `docs/DESIGN.md` section 4.6 rules out an adapter layer.
+- A database error mapper keys on a documented, standardized error code space (Postgres SQLSTATE,
+  Appendix A of its manual, is the precedent), never on message text, and produces constant
+  client-facing text (ADR 0007, ADR 0015). It must recognize every mainstream driver's error shape
+  structurally and unwrap the common ORM wrappers.
 
 **Constraints every contribution inherits.**
 
 - `hono` stays the only peer dependency. Type the third-party objects you read structurally (`*Like`
   interfaces) and never import the library at runtime or in types (ADR 0009). The real library is a
   devDependency in both `package.json` and `e2e/package.json`; pnpm refuses versions younger than a
-  day (`minimumReleaseAge`).
+  day (`minimumReleaseAge`). A database mapper's real driver is an `e2e/` devDependency (PGlite runs
+  Postgres in-process), and a driver whose error type spells its fields differently is a root
+  devDependency for a type-level test only.
 - A format owns its JSON Schema as a literal and pins `status`, `code`, and `title` with
   `constant()` from `schema-helpers.ts` (ADR 0003, ADR 0011). It renders from `ctx.meta`, which is
   already sanitized, and derives `type` at render time (ADR 0010). A format cannot set response
@@ -117,15 +125,18 @@ question is settled before code exists.
    `knip.jsonc` needs no change.
 3. Unit tests beside the file. Formats also run `assertFormatConformance()` from `src/testing` with
    the Ajv compiler in `src/test-support/ajv.ts`; hooks add a case to `validation/hooks.test-d.ts`
-   proving assignability to the real middleware's hook type.
+   proving assignability to the real middleware's hook type; mappers add a `*.test-d.ts` proving
+   assignability to `BanOptions['map']` for bans with and without custom catalogs and to the real
+   driver's error type.
 4. `e2e/package-surface.e2e.test.ts`: the exact export list of the new subpath. An e2e file named
    `<area>-<subject>.e2e.test.ts` driving the subpath over real HTTP.
 5. `e2e/smoke/app.ts` imports the subpath and `e2e/smoke/checks.ts` exercises it; the smoke test
    must pass on Bun, Deno, and workerd (`pnpm test:runtimes`).
 6. Docs in the same PR: `docs/SPEC.md` sections 1 (subpath table and source layout), 12 (entry
-   list), 14 and 14.1 (test rows), plus the section for the new module (7.x, 8.x, or 10.x);
-   `docs/DESIGN.md` section 4.4, 4.7, or 4.6 and 4.10; the README Modules table and any sentence
-   that enumerates the formats or hooks; `package.json` `keywords` when a new library name applies.
+   list), 14 and 14.1 (test rows), plus the section for the new module (6.x, 7.x, 8.x, or 10.x);
+   `docs/DESIGN.md` section 4.4, 4.5, 4.7, or 4.6, and 4.10; the README Modules table and any
+   sentence that enumerates the formats or hooks; `package.json` `keywords` when a new library name
+   applies.
 7. An ADR: a new subpath is a public API change, and a new format is a wire format.
 8. A changeset: an additive subpath or option is `minor`; anything that changes an existing wire
    shape, schema, or exported type is `major`.

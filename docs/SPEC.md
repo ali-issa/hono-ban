@@ -29,7 +29,7 @@ Contents
 
 `hono` is the only peer dependency. Every integration module types the third-party objects it
 receives structurally (ADR 0009), so installing `hono-ban` never pulls in or requires Zod, Valibot,
-`@standard-schema/spec`, `@hono/*` validators, `@opentelemetry/api`, or Ajv.
+`@standard-schema/spec`, `@hono/*` validators, `@opentelemetry/api`, a Postgres driver, or Ajv.
 
 | Subpath                            | Exports                                                                                                                                                                                                                                                                                                                       |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -44,6 +44,7 @@ receives structurally (ADR 0009), so installing `hono-ban` never pulls in or req
 | `hono-ban/standard-schema`         | `hook(ban)`, `fromIssues(ban, issues, location, options?)`, `toIssues(issues)`, `StandardHookResult`                                                                                                                                                                                                                          |
 | `hono-ban/openapi`                 | `errorSchema`, `errorResponse`, `errorResponses`, `validationSchema`, `validationResponse`, `SchemaSource`, `OpenApiOptions`, `ResponseObject`, `MediaTypeObject`, `ErrorRef`                                                                                                                                                 |
 | `hono-ban/otel`                    | `traceIdFromOtel(source)`, `OtelSource`, `OtelTraceLike`, `OtelSpanLike`, `OtelSpanContextLike`                                                                                                                                                                                                                               |
+| `hono-ban/postgresql`              | `postgresMapper(options?)`, `findPostgresError(value)`, `readPostgresFields(error)`, `PostgresMapOptions`, `PostgresMapping`, `PostgresIssue`, `PostgresIssueMapping`, `PostgresConstraintMapping`, `PostgresMapper`, `CatalogWith`, `PostgresErrorLike`, `PostgresErrorFields`                                               |
 | `hono-ban/testing`                 | `renderError`, `expectBanError`, `assertFormatConformance`, `ExpectedError`, `ConformanceOptions`, `SchemaValidator`                                                                                                                                                                                                          |
 
 Source layout. Every module with behavior has a sibling `*.test.ts`; contract types have
@@ -109,8 +110,13 @@ src/
     standard-schema.ts         8.7
   openapi/index.ts             section 9
   observability/otel.ts        10.3
+  postgresql/
+    error.ts                   PostgresErrorLike, PostgresErrorFields, findPostgresError(), readPostgresFields() (6.10)
+    sqlstate.ts                sqlstateDefault(): the built-in SQLSTATE table (6.10)
+    index.ts                   postgresMapper(), PostgresMapOptions, PostgresMapper, CatalogWith (6.10)
   testing/index.ts             section 11
   test-support/ajv.ts          compileWithAjv() for the repository's own conformance tests; not published
+  test-support/postgresql-*.ts   driver-shaped fixtures and a dispatch helper for the postgres tests; not published
 ```
 
 ## 2. Core types
@@ -617,6 +623,114 @@ owns only the configured error id header name: renaming or disabling it does not
 `X-Error-Id`, so a header of that name supplied through `options.headers` or on the error passes
 through unchanged.
 
+### 6.10 Postgres mapper (`hono-ban/postgresql`, ADR 0015)
+
+`postgresMapper(options?)` returns a `map` for `createBan` or `ban.onError` that turns a Postgres
+driver error into a catalog entry by SQLSTATE with constant client-facing text. Files:
+`postgresql/error.ts` (recognition), `postgresql/sqlstate.ts` (the built-in table),
+`postgresql/index.ts` (the mapper). No driver is imported (ADR 0009). @ref
+https://www.postgresql.org/docs/current/errcodes-appendix.html @ref
+https://www.postgresql.org/docs/current/protocol-error-fields.html
+
+Recognition. `findPostgresError(value)` returns `value` itself or the first object reached through
+`cause`, `original`, or `nativeError` (the first of those that is an object, at each level; at most
+eight links) whose `code` or `errno` matches `^[0-9A-Z]{5}$` and whose `severity` or
+`severity_local` is a string. That covers node-postgres, PGlite, and Neon (`code`, `severity`),
+postgres.js (`code`; `severity` from field `V`, absent behind PgBouncer and before 9.6, hence
+`severity_local` from field `S`), Bun (the SQLSTATE on `errno`, an `ERR_POSTGRES_*` constant on
+`code`), and the wrappers of Drizzle and Slonik (`cause`), Sequelize 6 (`original`), and Objection's
+`db-errors` (`nativeError`); Kysely rethrows the driver error, and TypeORM and MikroORM copy its
+fields onto their own error. A severity field is required because Node system errors (`EPIPE`) and
+Prisma (`P2002`) also use five-character codes. `readPostgresFields(error)` returns
+`{ sqlstate, errorClass, constraint, table, schema, column }`, the SQLSTATE from `code` else
+`errno`, each object field from the node-postgres name else the postgres.js name (`constraint_name`,
+`table_name`, `schema_name`, `column_name`). `PostgresErrorLike` declares every member optional;
+`postgres.test-d.ts` checks postgres.js's `PostgresError` against it field by field. Prisma is out
+of scope: its client error carries no `cause` and its adapter converts the pg error into its own
+payload.
+
+Algorithm for a recognized error with fields `f` and the thrown value `thrown`:
+
+1. `named` is `constraints[f.constraint]`, else `columns[f.table + '.' + f.column]`, else
+   `columns[f.column]`, each only when the field is defined and the table has the key as an own
+   property (a constraint named `constructor` must not reach the prototype).
+2. When `named` has `issue`: return
+   `ban.validation([{ path, message, code }], { location: issue.location ?? 'body' })`.
+3. `sources` is, in order and skipping absent ones: `named` (a string is `{ detail }`),
+   `codes[f.sqlstate]`, `codes[f.errorClass]`; `fallback` is
+   `sqlstateDefault(f.sqlstate, f.errorClass)` from the table below.
+4. When `sources` is empty and `fallback` is undefined: return `undefined`, so 6.3 falls through to
+   `from()` (the constant 500, `handled: false`).
+5. `key`, `detail`, `meta`, and `headers` each come from the first source that sets them, then
+   `fallback`, then `INTERNAL_SERVER_ERROR` and `UNEXPECTED_DETAIL`.
+   `error = ban.error(key, { detail, meta, headers, cause: driverError })`. When `retryAfter` is
+   set, `error.status` is 503, and the error carries no `Retry-After`, set
+   `Retry-After: String(retryAfter)`. Return `error`.
+
+The `cause` is the recognized driver error, never the thrown wrapper: Drizzle's `DrizzleQueryError`
+message carries the query and its parameters, and 6.7 renders the cause's stack on a 5xx under
+`includeStack`. `ErrorReport.cause` stays the thrown value (10.1) and `ErrorReport.error.cause` is
+the driver error. With `includeStack` on, a mapped 5xx body's stack begins with the server's message
+(relation, column, and role names, or `RAISE` text); with it off, nothing from the driver reaches a
+body.
+
+Construction. `TypeError` for a `codes` key not matching `^(?:[0-9A-Z]{5}|[0-9A-Z]{2})$`, a `codes`
+value that is a string or an issue mapping, a `constraints` or `columns` value that is neither a
+string nor an object, an `issue` without an array `path` and a string `message`, or `headers` the
+`Headers` constructor rejects (the message names the entry; same check as 6.4). `RangeError` for a
+`retryAfter` that is not a non-negative integer. A `key` the ban's catalog lacks throws the
+`RangeError` of `ban.error` at map time, a handler failure (6.4).
+
+Types.
+`postgresMapper<TKeys extends string = never>(options?: PostgresMapOptions<TKeys>): PostgresMapper<TKeys>`;
+`TKeys` is inferred from every `key` the options name. `PostgresMapper<TKeys>` is
+`<TErrors extends CatalogWith<TKeys>>(thrown: unknown, ban: Ban<TErrors>) => BanError | undefined`
+with `CatalogWith<TKeys> = Catalog & Readonly<Record<Exclude<TKeys, BuiltinKey>, ErrorDefinition>>`,
+so a mapper is accepted by every ban whose catalog defines the custom keys it names, and a mapper
+naming only built-in keys by every ban, without a type argument. `PostgresMapping` (`key?`,
+`detail?`, `meta?`, `headers?`, `issue?: never`) and `PostgresIssueMapping` (`issue: PostgresIssue`)
+are told apart by `issue`; `PostgresIssue` is `{ path, message, location?, code? }`.
+
+Built-in table (`sqlstate.ts`). A code is looked up first, then its class; a SQLSTATE not listed and
+outside a listed class has no row.
+
+| SQLSTATE                                        | Condition                                                                                                    | Entry                   | Detail                                                |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------ | ----------------------- | ----------------------------------------------------- |
+| 23505                                           | unique_violation                                                                                             | `CONFLICT`              | A record with the same value already exists           |
+| 23P01                                           | exclusion_violation                                                                                          | `CONFLICT`              | A record overlaps an existing one                     |
+| 23503                                           | foreign_key_violation, both directions (fields `n` and `t` name the FK-side constraint and table either way) | `CONFLICT`              | A referenced record does not exist or is still in use |
+| 23001                                           | restrict_violation (PostgreSQL 18 for `ON DELETE RESTRICT`; earlier versions raise 23503)                    | `CONFLICT`              | A record is still in use                              |
+| 23502                                           | not_null_violation (fields `t` and `c`, no `n`: reachable through `columns`, not `constraints`)              | `UNPROCESSABLE_CONTENT` | A required value is missing                           |
+| 23514                                           | check_violation                                                                                              | `UNPROCESSABLE_CONTENT` | A value violates a constraint                         |
+| 40002                                           | transaction_integrity_constraint_violation (not raised by PostgreSQL; wire-compatible servers)               | `CONFLICT`              | The change conflicts with existing records            |
+| 40001, 40P01, 55P03, 25006                      | serialization_failure, deadlock_detected, lock_not_available, read_only_sql_transaction                      | `SERVICE_UNAVAILABLE`   | Temporarily unavailable, try again later              |
+| class 22                                        | data_exception                                                                                               | `UNPROCESSABLE_CONTENT` | A value is invalid or out of range                    |
+| class 23                                        | any other integrity_constraint_violation                                                                     | `UNPROCESSABLE_CONTENT` | A value violates a constraint                         |
+| classes 08, 40, 53, 57                          | connection_exception, transaction_rollback, insufficient_resources, operator_intervention                    | `SERVICE_UNAVAILABLE`   | Temporarily unavailable, try again later              |
+| 08007, 40003, 53400, 57014, 2200H, 22P04, 22012 | excluded from their class row (see below)                                                                    | none                    |                                                       |
+
+503 is reserved for conditions where the same request is expected to succeed after a delay, and
+`Retry-After` is attached only there. 08007 and 40003 mean the commit outcome is unknown, so a 503
+would invite resubmitting a write that may have been applied (RFC 9110 section 9.2.2). 57014 is a
+statement timeout, an operator cancel, or the client's own abort, which the SQLSTATE cannot tell
+apart, so it maps to nothing rather than promising a retry; teams that use `statement_timeout` for
+load shedding set `codes: { '57014': { key: 'SERVICE_UNAVAILABLE' } }` (or `GATEWAY_TIMEOUT`). 53400
+(`temp_file_limit`) is per query and fails again. 2200H, 22P04, and 22012 come from the
+application's SQL rather than a client value. 08P01 reads as transient because PgBouncer sends it as
+the default SQLSTATE of every pooler error, although PostgreSQL raises it for a client protocol
+mistake; `codes: { '08P01': { key: 'INTERNAL_SERVER_ERROR' } }` selects the other reading. 42501
+(`insufficient_privilege`) and P0001 (`raise_exception`) have no row because in a single-role
+deployment they are deployment or program errors;
+`codes: { '42501': { key: 'FORBIDDEN' }, P0001: { key: 'BAD_REQUEST', detail: '...' } }` serves
+row-level-security and `RAISE`-based deployments, and a custom `ERRCODE` maps the same way. 40001,
+40P01, and 55P03 are 503 rather than 409 because the client retries the identical request and ADR
+0007 rules out describing the conflict; with `googleApi()` they render `status: UNAVAILABLE`, and a
+409 entry through `codes` renders `ABORTED` (7.6.1). @ref
+https://www.rfc-editor.org/rfc/rfc9110#section-9.2.2 @ref
+https://www.rfc-editor.org/rfc/rfc9110#section-15.6.4 @ref
+https://www.postgresql.org/docs/current/transaction-iso.html @ref
+https://github.com/pgbouncer/pgbouncer/blob/master/src/proto.c
+
 ## 7. Formats
 
 ```ts
@@ -856,9 +970,10 @@ uses to turn an HTTP error into a status code: 400 `INVALID_ARGUMENT`, 401 `UNAU
 `PERMISSION_DENIED`, 404 `NOT_FOUND`, 409 `ABORTED`, 416 `OUT_OF_RANGE`, 429 `RESOURCE_EXHAUSTED`,
 499 `CANCELLED`, 501 `UNIMPLEMENTED`, 503 `UNAVAILABLE`, 504 `DEADLINE_EXCEEDED`; any other 2xx
 `OK`, any other 4xx `FAILED_PRECONDITION`, any other 5xx `INTERNAL`, everything else `UNKNOWN`. The
-result depends only on the definition, so the schema pins `status` with `constant()`. @ref
-https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto @ref
-https://github.com/googleapis/gax-nodejs/blob/main/gax/src/status.ts
+result depends only on the definition, so the schema pins `status` with `constant()`. The 503 rows
+of the Postgres mapper therefore render `UNAVAILABLE`; a 409 entry through its `codes` renders
+`ABORTED` (6.10). @ref https://github.com/googleapis/googleapis/blob/master/google/rpc/code.proto
+@ref https://github.com/googleapis/gax-nodejs/blob/main/gax/src/status.ts
 
 #### 7.6.2 `render` and `renderValidation` (`details.ts`)
 
@@ -1093,12 +1208,13 @@ and CI diffs it):
 
 ```
 index, formats/problem-details, formats/json-api, formats/plain, formats/google-api, formats/stripe,
-zod, valibot, standard-schema, openapi, otel, testing
+zod, valibot, standard-schema, openapi, otel, postgres, testing
 ```
 
 `peerDependencies` is `{ "hono": ">=4.12.34" }` and there are no `dependencies`. Validators,
-`@hono/*` packages, `@opentelemetry/api`, Ajv, and `ajv-formats` are devDependencies used only by
-tests. `sideEffects: false`. publint and attw run as part of the build.
+`@hono/*` packages, `@opentelemetry/api`, `postgres` (postgres.js, for one type-level test), Ajv,
+and `ajv-formats` are devDependencies used only by tests; `@electric-sql/pglite` and `drizzle-orm`
+are devDependencies of `e2e/` only. `sideEffects: false`. publint and attw run as part of the build.
 
 The repository is a pnpm workspace with two packages: the root (published) and `e2e/` (private,
 `hono-ban-e2e`). `e2e/` depends on `hono-ban` through `workspace:*`, so its imports resolve through
@@ -1145,6 +1261,7 @@ Coverage thresholds (90 percent) are enforced by Vitest.
 | `formats/*`          | extension flattening and precedence, Problem Details members and toggles, `traceIdMember` rejected, validation entries, plain shape, JSON:API objects and sources, `traceIdMetaKey` rejected, empty issue list, closed schemas, OpenAPI 3.0 `enum`, `defineFormat` both forms and types, Google API `status` resolution, metadata stringification and key filtering, `traceIdMetadataKey` rejected, empty issue list without `BadRequest`, `propertyNames` per dialect, field paths, `RetryInfo`, absolute-only `Help`, closed detail schemas, Stripe member order, `type` classification, first-issue `param`, Ajv conformance for all five formats |
 | `validation/*`       | pointer escaping, symbols, target mapping, `ban.validation`, Zod 4 and Zod 3 issues, `zValidator` and `OpenAPIHono` hooks, Valibot issues and `vValidator`, Standard Schema issues and `sValidator`, hook type assignability                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `openapi`            | key and status resolution, descriptions, `RangeError`s, dialect, `anyOf` grouping and identical-schema collapse, content type, validation response, generated OpenAPI 3.1 document                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `postgresql/*`       | recognition of the node-postgres, postgres.js (with and without field V), Bun (`errno`), and copied-field shapes; Node errno, Prisma, and connection-error shapes rejected; `cause`, `original`, `nativeError` traversal with the depth cap and cycles; field normalization in both spellings; every table row and exclusion; constraint, column, code, class, and table precedence member by member; issue mappings; own-property lookups; `retryAfter` placement; construction errors; unknown key as a handler failure; driver stack under `includeStack`; postgres.js error type and mapper assignability matrix                                 |
 | `observability/otel` | fake and real trace APIs, invalid ids                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `testing`            | `expectBanError` messages, `renderError`, `assertFormatConformance` on a broken format                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 
@@ -1172,6 +1289,8 @@ with `fetch` and, wherever the package publishes a schema, validated with Ajv
 | `validation-zod`, `validation-zod-direct`, `validation-zod-openapi` | `zValidator` hook for every target, pointer escaping, typed passthrough, `validationKey`, `fromZodError`, `toIssues`, `OpenAPIHono` `defaultHook` parity                                                                                                                                                                                                                                                                                                             |
 | `validation-valibot-standard-valibot`, `-standard-schema`           | `vValidator` and `sValidator` hooks (Zod and Valibot schemas), `expected`/`received` mapping, direct converters, `ban.validation()`, JSON:API `source` for Valibot issues                                                                                                                                                                                                                                                                                            |
 | `openapi-document`, `openapi-responses`                             | served 3.1 (`doc31`) and 3.0 (`doc`) documents, `const` versus `enum`, `anyOf` grouping, real error bodies validated against the served schemas, `RangeError`s                                                                                                                                                                                                                                                                                                       |
+| `postgresql-pglite`, `postgresql-pglite-options`                    | PGlite (PostgreSQL 18) raising every table row it can and the fallthrough codes over HTTP, directly and through Drizzle (wrapper on the report, driver error on the error); `constraints`, `columns`, and `codes`; `includeStack` rendering the driver stack and not the ORM wrapper's; no server text in any body                                                                                                                                                   |
+| `postgresql-options`                                                | hand-built errors in the node-postgres, Neon, postgres.js (with and without field V), Bun, and Sequelize shapes; Prisma and Node errno shapes left unhandled; `retryAfter` on 503 only; an issue mapping rendered by JSON:API with `source.pointer` and validated against `validationSchema`                                                                                                                                                                         |
 | `otel-correlation`, `otel-sources`                                  | real `NodeTracerProvider` spans: body and report trace id equal the exported span, option wins over `traceparent`, no span outside the middleware, `{ trace }` form, invalid span contexts ignored, JSON:API `meta.traceId`                                                                                                                                                                                                                                          |
 
 ### 14.2 Runtime smoke test (`e2e/smoke/`)
@@ -1181,10 +1300,13 @@ imports every published subpath and throws one error per feature family (catalog
 through an explicit `problemDetails()`, `ban.validation` through the Zod, Valibot, and Standard
 Schema hooks, `HTTPException` from `hono/bearer-auth`, an unknown `Error`, JSON:API, plain, Google
 API, and Stripe sub-apps, the OpenAPI helpers, `renderError` from `hono-ban/testing`, a
-`bearerChallenge` header, the OpenTelemetry adapter). `checks.ts` asserts the responses through a
-runtime-neutral `dispatch` function, checks `Cache-Control: no-store` and a matching `X-Error-Id` on
-every Problem Details response, and `report()` throws on any failure, so the process exits non-zero.
-A new subpath is not covered until `app.ts` imports it and `checks.ts` exercises it. Entry points:
+`bearerChallenge` header, the OpenTelemetry adapter, a unique violation through `postgresMapper` in
+the node-postgres and Bun shapes). `app.ts` imports no database driver: the workerd bundle inlines
+every import of it, so the Postgres routes throw driver-shaped fixtures. `checks.ts` asserts the
+responses through a runtime-neutral `dispatch` function, checks `Cache-Control: no-store` and a
+matching `X-Error-Id` on every Problem Details response, and `report()` throws on any failure, so
+the process exits non-zero. A new subpath is not covered until `app.ts` imports it and `checks.ts`
+exercises it. Entry points:
 
 | Script                  | Runtime                                                                                                                                      |
 | ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |

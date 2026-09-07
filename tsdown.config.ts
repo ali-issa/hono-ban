@@ -22,6 +22,7 @@ const config: UserConfig = defineConfig({
     'standard-schema': 'src/validation/standard-schema.ts',
     openapi: 'src/openapi/index.ts',
     otel: 'src/observability/otel.ts',
+    postgresql: 'src/postgresql/index.ts',
     testing: 'src/testing/index.ts',
   },
   format: 'esm',

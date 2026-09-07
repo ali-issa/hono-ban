@@ -228,6 +228,21 @@ const CHECKS: Readonly<Record<string, Check>> = {
     equal(error['doc_url'], `${DOCS_BASE_URL}/NOT_FOUND`, 'doc_url');
     equal(error['message'], 'Order 42 does not exist', 'message');
   },
+  'Postgres unique violation through postgresMapper': async (dispatch) => {
+    for (const path of ['/orders/duplicate', '/orders/duplicate-bun']) {
+      const { body } = await problem(dispatch, path, 409);
+      equal(body['code'], 'CONFLICT', `${path} code`);
+      equal(
+        body['detail'],
+        'That email is already registered',
+        `${path} detail`,
+      );
+      check(
+        !JSON.stringify(body).includes('a@b.c'),
+        `${path} leaks the row value`,
+      );
+    }
+  },
   'OpenAPI helpers': async (dispatch) => {
     const responses = await json(await dispatch('/openapi'));
     equal(

@@ -15,6 +15,7 @@ import * as problemDetails from 'hono-ban/formats/problem-details';
 import * as stripe from 'hono-ban/formats/stripe';
 import * as openapi from 'hono-ban/openapi';
 import * as otel from 'hono-ban/otel';
+import * as postgres from 'hono-ban/postgresql';
 import * as standardSchema from 'hono-ban/standard-schema';
 import * as testing from 'hono-ban/testing';
 import * as valibot from 'hono-ban/valibot';
@@ -85,7 +86,7 @@ describe('package surface', () => {
     );
   });
 
-  it('openapi, otel and testing subpaths export their helpers', () => {
+  it('openapi, otel, postgres and testing subpaths export their helpers', () => {
     expect(names(openapi)).toEqual(
       sorted([
         'errorResponse',
@@ -96,6 +97,9 @@ describe('package surface', () => {
       ]),
     );
     expect(names(otel)).toEqual(['traceIdFromOtel']);
+    expect(names(postgres)).toEqual(
+      sorted(['findPostgresError', 'postgresMapper', 'readPostgresFields']),
+    );
     expect(names(testing)).toEqual(
       sorted(['assertFormatConformance', 'expectBanError', 'renderError']),
     );

@@ -37,6 +37,7 @@ This file is read by AI coding agents working in this repository. Humans: see `C
 - `src/validation/` validation-issue normalization and validator hooks
 - `src/openapi/` response schema helpers
 - `src/observability/` the OpenTelemetry trace id adapter
+- `src/postgresql/` the Postgres SQLSTATE mapper (`hono-ban/postgresql`)
 - `src/testing/` consumer test helpers and format conformance
 - `src/internal/` helpers that are never exported
 - `src/test-support/` helpers for the repository's own tests (Ajv compiler); not published

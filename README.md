@@ -90,6 +90,55 @@ throw ban.ORDER_CONFLICT({
 });
 ```
 
+### Database errors
+
+`hono-ban/postgresql` maps a Postgres driver error to a catalog entry by SQLSTATE with constant
+client-facing text. It recognizes the errors of node-postgres, postgres.js, PGlite, Neon, and Bun,
+thrown directly or wrapped by Drizzle, Kysely, TypeORM, MikroORM, Slonik, or Sequelize:
+
+```ts
+import { postgresMapper } from 'hono-ban/postgresql';
+
+const ban = createBan({
+  map: postgresMapper({
+    constraints: {
+      users_email_key: { issue: { path: ['email'], message: 'That email is already registered' } },
+      orders_customer_id_fkey: 'The customer does not exist',
+    },
+    columns: { 'users.email': { issue: { path: ['email'], message: 'Email is required' } } },
+    codes: { '42501': { key: 'FORBIDDEN' } },
+    retryAfter: 1,
+  }),
+});
+```
+
+A unique violation is a 409, a not-null or check violation a 422, a serialization failure or a
+deadlock a 503 with `Retry-After`. `constraints` and `columns` refine the wording per constraint
+name or `table.column`, or turn the violation into a validation error with one issue at a path, the
+shape a form already handles; `codes` overrides the entry per SQLSTATE or class. Nothing from the
+driver's message, detail, or hint reaches a body: the driver error stays on the report as
+`report.error.cause`, and `findPostgresError(report.cause)` reads it out of any wrapper. Codes with
+no row, such as a syntax error, a missing table, or a `RAISE EXCEPTION`, fall through to the
+constant 500 with `handled: false`. The full table and the precedence rules are in SPEC section
+6.10.
+
+To put an application-authored `RAISE` message on the wire, compose your own `map`:
+
+```ts
+import { findPostgresError, postgresMapper } from 'hono-ban/postgresql';
+
+const postgres = postgresMapper();
+const ban = createBan({
+  map: (thrown, ban) => {
+    const error = findPostgresError(thrown);
+    if (error?.code === 'P0001' && error instanceof Error) {
+      return ban.badRequest(error.message, { cause: thrown });
+    }
+    return postgres(thrown, ban);
+  },
+});
+```
+
 ### Headers some statuses require
 
 HTTP makes the application, not the library, responsible for a few headers: a 401 MUST carry
@@ -348,12 +397,12 @@ app.onError(
 | `hono-ban/zod`, `hono-ban/valibot`, `hono-ban/standard-schema`                                                                                      | validator hooks and issue converters                                                                 |
 | `hono-ban/openapi`                                                                                                                                  | `errorResponses`, `errorResponse`, `errorSchema`, `validationResponse`, `validationSchema`           |
 | `hono-ban/otel`                                                                                                                                     | `traceIdFromOtel`                                                                                    |
+| `hono-ban/postgresql`                                                                                                                               | `postgresMapper`, `findPostgresError`, `readPostgresFields`                                          |
 | `hono-ban/testing`                                                                                                                                  | `expectBanError`, `renderError`, `assertFormatConformance`                                           |
 
-Database and driver error translation is not part of the core. Map driver errors to catalog entries
-in `createBan({ map })` with constant client-facing messages, never the driver's own text (a
-PostgreSQL `DETAIL` line can contain the failing row). A companion package for Postgres SQLSTATE
-mapping is planned and will be linked here when it ships.
+Other databases go through `createBan({ map })` the same way `hono-ban/postgresql` does: catalog
+entries with constant client-facing messages, never the driver's own text (a driver's detail line
+can contain the failing row).
 
 ## Documentation
 

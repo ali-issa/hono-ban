@@ -30,8 +30,9 @@ It is a library for teams who treat their error responses as an API contract.
 ### Non-goals
 
 - Replacing your logger or tracer. hono-ban emits one `ErrorReport` per error and stops there.
-- Database or driver error translation in the core. A companion package is planned (section 7); it
-  will carry client-safe messages only and never forward driver text (ADR-0007).
+- Forwarding database or driver text to clients. `hono-ban/postgresql` maps Postgres errors to
+  catalog entries with constant messages (ADR-0015); other drivers go through `map` the same way,
+  and no driver's `message`, `detail`, or `hint` is ever forwarded (ADR-0007).
 - Content negotiation between formats per request. One format per `createBan` instance. If demand
   appears, it is additive.
 - Supporting CommonJS-only consumers on Node older than 22.12 (ADR-0006).
@@ -153,6 +154,9 @@ const ban = createBan({
 
 `map` is a single ordered function, not a class registry, so `instanceof` chains, discriminant
 checks, and third-party error shapes all work the same way, and subclasses match their parent.
+Postgres errors have a ready-made one: `postgresMapper()` from `hono-ban/postgresql` is such a
+`map`, keyed on SQLSTATE, with constant client text and per-constraint overrides (section 4.5,
+ADR-0015).
 
 ### 3.6 Formats
 
@@ -455,6 +459,14 @@ interface HandlerOptions {
 The step-by-step algorithm, the fallback path, header merge order, and every edge case are in SPEC
 section 6.
 
+`hono-ban/postgresql` supplies a `map` for Postgres driver errors. `postgresMapper(options)`
+recognizes the error by its SQLSTATE and severity, directly or through an ORM wrapper's `cause`, and
+returns a catalog entry with constant text (409 for conflicts, 422 for rejected values, 503 for
+transient conditions) or `undefined` for codes it has no row for, so those stay unhandled 500s.
+`constraints`, `columns`, and `codes` refine the entry and wording, or turn a violation into a
+validation error with one issue. SPEC section 6.10 has the table and the precedence; ADR-0015 the
+reasoning.
+
 ### 4.6 Error report
 
 ```ts
@@ -543,11 +555,12 @@ several error statuses are heuristically cacheable.
 - ESM only, `platform: 'neutral'`, `engines.node >= 22.12`, `sideEffects: false` (ADR-0006).
 - One peer: `hono >= 4.12.34` (upstream security floor). No optional peers: the integrations are
   typed structurally, so `zod`, `valibot`, `@hono/*` validators, `@standard-schema/spec`, and
-  `@opentelemetry/api` are devDependencies of this repository only (ADR-0009).
+  `@opentelemetry/api`, and the Postgres drivers are devDependencies of this repository only
+  (ADR-0009).
 - No runtime dependencies. Ids come from `crypto.randomUUID()`.
 - Subpath exports: `.`, `./formats/json-api`, `./formats/problem-details`, `./formats/plain`,
   `./formats/google-api`, `./formats/stripe`, `./zod`, `./valibot`, `./standard-schema`,
-  `./openapi`, `./otel`, `./testing`.
+  `./openapi`, `./otel`, `./postgresql`, `./testing`.
 
 ## 5. Package layout
 
@@ -562,6 +575,7 @@ outline:
 - `src/validation/` `ValidationIssue`, pointer helpers, the Zod, Valibot, and Standard Schema hooks
 - `src/openapi/` response schema helpers
 - `src/observability/` the OpenTelemetry trace id adapter
+- `src/postgresql/` the Postgres SQLSTATE mapper
 - `src/testing/` consumer-facing test helpers and format conformance
 - `src/internal/` helpers that are never exported
 
@@ -587,8 +601,5 @@ hono-ban 1.0 does not depend on or wrap hono-problem-details.
 ## 7. Roadmap
 
 Everything described in this document has shipped and is covered by the unit, end-to-end, and
-runtime smoke suites (SPEC section 14). What remains:
-
-| Item          | Scope                                                                                                                                                                                                                                                                                                 | Exit criterion                                                        |
-| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
-| `hono-ban-pg` | A separate package (preferred over a `./pg` subpath: its own release cadence and its own driver peer) that maps Postgres SQLSTATE values to catalog entries with constant client messages, accepts a constraint map for user-facing wording, and never forwards driver `detail`, `hint`, or `message` | Published as a separate package; until then the README states the gap |
+runtime smoke suites (SPEC section 14). Nothing is scheduled; additive proposals start as a
+discussion (`CONTRIBUTING.md`).
