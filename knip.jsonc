@@ -1,0 +1,20 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "workspaces": {
+    ".": {
+      // Type tests are run by Vitest's typecheck mode, which knip's vitest
+      // plugin does not read; list them as entries so they are not reported
+      // as unused.
+      "entry": ["src/**/*.test-d.ts"],
+      "project": ["src/**/*.ts"]
+    },
+    "e2e": {
+      // Consumer package: every test file is an entry (vitest plugin);
+      // `support/` is reached from them. `smoke/run.ts` and `smoke/workerd.ts`
+      // are found through the package.json scripts; `worker.ts` is a tsdown
+      // entry named as a string inside `workerd.ts`, so it is listed.
+      "entry": ["smoke/worker.ts"],
+      "project": ["**/*.ts"]
+    }
+  }
+}

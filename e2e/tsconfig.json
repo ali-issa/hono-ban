@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  // The e2e package is a consumer: it type-checks against the emitted
+  // declarations in ../dist through the package `exports` map, exactly as
+  // an installed copy would. Build first (`pnpm build` at the root).
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    // The smoke entry points import siblings as `./x.ts` so Bun, Deno, and
+    // Node's type stripping can run them without a bundler.
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false,
+    "isolatedDeclarations": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
+}

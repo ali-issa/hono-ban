@@ -1,0 +1,45 @@
+name: Bug report
+description: Something behaves differently from the documentation.
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: hono-ban version
+      placeholder: 1.0.0
+    validations:
+      required: true
+  - type: input
+    id: runtime
+    attributes:
+      label: Runtime and version
+      placeholder: Node 24.11, Bun 1.3, Cloudflare Workers (compat date), Deno 2.x
+    validations:
+      required: true
+  - type: input
+    id: hono
+    attributes:
+      label: Hono version
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: A short script or a link to a repository. Include the format in use (JSON:API, Problem Details, custom).
+      render: ts
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include the full response body and headers, or the error output.
+    validations:
+      required: true

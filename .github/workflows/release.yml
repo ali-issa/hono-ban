@@ -1,0 +1,97 @@
+# Release automation with Changesets.
+#
+# On every push to main, `select-mode` reads the repository state and picks
+# one of:
+#   - `version`: pending changesets exist, so the "Version Packages" PR is
+#     opened or updated (bumps package.json and CHANGELOG.md);
+#   - `publish`: no pending changesets and package.json holds a version that
+#     is not on npm, so `changeset publish` publishes it, tags the commit, and
+#     creates a GitHub release;
+#   - `none`: nothing to do (running `version` here would open an empty PR).
+#
+# Publishing uses npm trusted publishing (OIDC): no NPM_TOKEN secret. pnpm
+# publish exchanges the GitHub id-token for a short-lived npm token and npm
+# attaches provenance automatically. One-time setup on npmjs.com for the
+# package: Settings > Trusted publisher > GitHub Actions, repository
+# ali-issa/hono-ban, workflow filename release.yml.
+# @ref https://changesets.dev/guide/automating#how-do-i-run-the-version-and-publish-commands
+# @ref https://docs.npmjs.com/trusted-publishers
+# @ref https://github.com/pnpm/pnpm/releases/tag/v11.0.7 (OIDC in pnpm publish)
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  FORCE_COLOR: 1
+
+jobs:
+  select-mode:
+    name: Select mode
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - id: select-mode
+        uses: changesets/action/select-mode@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+
+  version:
+    name: Version PR
+    if: needs.select-mode.outputs.mode == 'version'
+    needs: select-mode
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action/version@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          script: pnpm run changeset:version
+          commit-message: 'chore(release): version packages'
+          pr-title: 'chore(release): version packages'
+
+  publish:
+    name: Publish to npm
+    if: needs.select-mode.outputs.mode == 'publish'
+    needs: select-mode
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .node-version
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action/publish@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
+        with:
+          script: pnpm run release

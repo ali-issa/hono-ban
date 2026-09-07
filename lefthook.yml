@@ -1,0 +1,19 @@
+# Git hooks. Installed by `pnpm install` through the `prepare` script.
+# @ref https://lefthook.dev/configuration/
+pre-commit:
+  parallel: true
+  jobs:
+    - name: format
+      run: pnpm exec oxfmt {staged_files}
+      stage_fixed: true
+      glob: '*.{ts,js,json,jsonc,md,yml,yaml}'
+    - name: lint
+      run: pnpm exec oxlint {staged_files}
+      glob: '*.{ts,js}'
+
+pre-push:
+  jobs:
+    - name: types
+      run: pnpm run check:types
+    - name: test
+      run: pnpm test

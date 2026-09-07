@@ -1,0 +1,35 @@
+{
+  "name": "hono-ban-e2e",
+  "version": "0.0.0",
+  "private": true,
+  "description": "End-to-end tests: a consumer of the built hono-ban package, exercised over real HTTP.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "smoke:bun": "bun run smoke/run.ts",
+    "smoke:deno": "deno run --allow-read --allow-env smoke/run.ts",
+    "smoke:workerd": "node --experimental-strip-types smoke/workerd.ts",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@hono/node-server": "2.1.1",
+    "@hono/standard-validator": "0.4.0",
+    "@hono/valibot-validator": "0.6.1",
+    "@hono/zod-openapi": "1.6.3",
+    "@hono/zod-validator": "0.9.1",
+    "@opentelemetry/api": "1.9.1",
+    "@opentelemetry/sdk-trace-node": "2.11.0",
+    "@types/node": "26.4.1",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "hono": "4.13.7",
+    "hono-ban": "workspace:*",
+    "miniflare": "4.20260730.0",
+    "tsdown": "0.23.0",
+    "typescript": "7.0.2",
+    "valibot": "1.4.2",
+    "vitest": "5.0.0",
+    "zod": "4.5.4"
+  }
+}

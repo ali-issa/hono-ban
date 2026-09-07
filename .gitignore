@@ -1,0 +1,13 @@
+node_modules/
+dist/
+coverage/
+e2e/smoke/.workerd/
+.vitest/
+*.tsbuildinfo
+*.tgz
+.DS_Store
+.env
+.env.*
+!.env.example
+.idea/
+*.log

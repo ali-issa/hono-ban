@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    // Language and runtime. Web-standard APIs only (Response, Headers, crypto);
+    // "dom" supplies those types without coupling the library to Node.
+    "target": "es2023",
+    "lib": ["es2023", "dom", "dom.iterable"],
+    "types": [],
+
+    // Modules. Bundler resolution for a tsdown-built ESM library.
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "moduleDetection": "force",
+    "verbatimModuleSyntax": true,
+    "noUncheckedSideEffectImports": true,
+
+    // Declarations. isolatedDeclarations lets tsdown emit .d.ts with oxc
+    // instead of the TypeScript compiler API (which TypeScript 7 does not
+    // expose yet). erasableSyntaxOnly keeps the source loadable by Node's
+    // type stripping: no enums, namespaces, or parameter properties.
+    // @ref https://tsdown.dev/options/dts
+    // @ref https://nodejs.org/api/typescript.html#type-stripping
+    "declaration": true,
+    "declarationMap": true,
+    "isolatedDeclarations": true,
+    "erasableSyntaxOnly": true,
+    "noEmit": true,
+
+    // Strictness.
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noPropertyAccessFromIndexSignature": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowUnreachableCode": false,
+    "allowUnusedLabels": false,
+
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "*.config.ts"],
+  "exclude": ["dist", "node_modules", "coverage"]
+}

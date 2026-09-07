@@ -1,0 +1,88 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+
+  "printWidth": 80,
+  "tabWidth": 2,
+  "useTabs": false,
+  "semi": true,
+  "singleQuote": true,
+  "jsxSingleQuote": false,
+  "quoteProps": "as-needed",
+  "trailingComma": "all",
+  "bracketSpacing": true,
+  "bracketSameLine": false,
+  "arrowParens": "always",
+  "endOfLine": "lf",
+  "objectWrap": "preserve",
+  "proseWrap": "preserve",
+  "htmlWhitespaceSensitivity": "css",
+  "singleAttributePerLine": false,
+  "embeddedLanguageFormatting": "auto",
+  "insertFinalNewline": true,
+
+  "sortPackageJson": true,
+
+  "sortImports": {
+    "newlinesBetween": true,
+    "ignoreCase": true,
+    "order": "asc",
+    "partitionByComment": false,
+    "partitionByNewline": false,
+    "sortSideEffects": false,
+    "internalPattern": ["@/", "~/"],
+    "groups": [
+      "type-external",
+      "self-type",
+      ["type-internal", "type-parent", "type-sibling", "type-index"],
+      "value-builtin",
+      "value-external",
+      "self-value",
+      ["value-internal", "value-parent", "value-sibling", "value-index"],
+      "side_effect",
+      "side_effect_style",
+      "style",
+      "unknown"
+    ],
+    "customGroups": [
+      {
+        "groupName": "self-type",
+        "modifiers": ["type"],
+        "elementNamePattern": ["hono-ban", "hono-ban/**"]
+      },
+      {
+        "groupName": "self-value",
+        "modifiers": ["value"],
+        "elementNamePattern": ["hono-ban", "hono-ban/**"]
+      }
+    ]
+  },
+
+  "ignorePatterns": [
+    "dist/**",
+    "out/**",
+    "build/**",
+    "coverage/**",
+    "node_modules/**",
+    "**/*.min.js",
+    "**/*.min.css",
+    "**/*.snap",
+    "CHANGELOG.md",
+    "pnpm-lock.yaml"
+  ],
+
+  "overrides": [
+    {
+      "files": ["*.md", "*.mdx"],
+      "options": {
+        "proseWrap": "always",
+        "printWidth": 100
+      }
+    },
+    {
+      "files": ["*.json", "*.jsonc"],
+      "options": {
+        "trailingComma": "none"
+      }
+    }
+  ]
+}
