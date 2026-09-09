@@ -1,6 +1,6 @@
 {
   "name": "hono-ban",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Structured, extensible HTTP errors for Hono. One API, any wire format: RFC 9457 Problem Details, JSON:API, Google API (AIP-193), Stripe, or your own.",
   "keywords": [
     "aip-193",
