@@ -122,6 +122,18 @@ no row, such as a syntax error, a missing table, or a `RAISE EXCEPTION`, fall th
 constant 500 with `handled: false`. The full table and the precedence rules are in SPEC section
 6.10.
 
+How each driver's support is verified (versions are the pins in `e2e/package.json`; the dated matrix
+is in ADR 0015):
+
+| Driver or ORM                                | Verified by                                                                                |
+| -------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| node-postgres (`pg`)                         | Real server errors over the wire protocol (PGlite behind `pglite-socket`) in the e2e suite |
+| postgres.js (`postgres`)                     | The same, plus a type-level check of its error type against the mapper's input type        |
+| PGlite                                       | Real server errors in-process in the e2e suite                                             |
+| Drizzle                                      | Real server errors through its wrapper in the e2e suite                                    |
+| Neon, Bun SQL, Sequelize 6                   | Error shapes built from the driver source, driven over HTTP                                |
+| Kysely, TypeORM, MikroORM, Slonik, Objection | Source inspection of how each rethrows or wraps the driver error (ADR 0015)                |
+
 To put an application-authored `RAISE` message on the wire, compose your own `map`:
 
 ```ts

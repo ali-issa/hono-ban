@@ -181,6 +181,8 @@ describe('constraints and columns', () => {
       errors: [{ pointer: '/email', detail: 'Already registered' }],
     });
     expect(email.report.cause).toBeInstanceOf(PgError);
+    // The reporting contract holds for issue mappings too (SPEC 6.10).
+    expect(email.report.error.cause).toBe(email.report.cause);
     const age = await dispatch(
       ban,
       new PgError({ code: '23514', constraint: 'users_age_check' }),

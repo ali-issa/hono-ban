@@ -20,7 +20,9 @@ import { startServer } from './support/server';
  * with and without field V (PgBouncer), Bun with the SQLSTATE on `errno`,
  * plus the shapes that must not match. Also `retryAfter`, and an issue
  * mapping rendered by JSON:API with its `source.pointer`. Real server
- * errors are `postgresql-pglite.e2e.test.ts`.
+ * errors are `postgresql-pglite.e2e.test.ts` (PGlite and Drizzle),
+ * `postgresql-node-postgres.e2e.test.ts`, and
+ * `postgresql-postgres-js.e2e.test.ts`.
  */
 
 /** SPEC 13 `UNEXPECTED_DETAIL`. */

@@ -15,5 +15,17 @@ describe('ban.validation', () => {
     expect(error.detail).toBe('Fix the email');
     expect(error.meta).toEqual({ form: 'signup', location: 'body' });
     expect(error.issues).toEqual([{ path: ['email'], message: 'Invalid' }]);
+    expect(error.cause).toBeUndefined();
+  });
+
+  it('keeps the caught failure as cause without rendering it', () => {
+    const ban = createBan();
+    const failure = new Error('driver text with a row value');
+    const error = ban.validation([{ path: ['email'], message: 'Taken' }], {
+      location: 'body',
+      cause: failure,
+    });
+    expect(error.cause).toBe(failure);
+    expect(JSON.stringify(ban.render(error).body)).not.toContain('row value');
   });
 });

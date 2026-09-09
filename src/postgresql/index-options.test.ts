@@ -186,10 +186,29 @@ describe('construction', () => {
     ).not.toThrow();
   });
 
-  it('rejects a negative or fractional retryAfter', () => {
+  it('rejects a negative, fractional, or unsafe retryAfter', () => {
     expect(() => postgresMapper({ retryAfter: -1 })).toThrow(RangeError);
     expect(() => postgresMapper({ retryAfter: 1.5 })).toThrow(RangeError);
+    // String(1e21) is '1e+21', not RFC 9110 delay-seconds.
+    expect(() => postgresMapper({ retryAfter: 1e21 })).toThrow(RangeError);
     expect(() => postgresMapper({ retryAfter: 0 })).not.toThrow();
+    expect(() =>
+      postgresMapper({ retryAfter: Number.MAX_SAFE_INTEGER }),
+    ).not.toThrow();
+  });
+
+  it('ignores codes entries inherited from a prototype', async () => {
+    // Never validated (Object.entries lists own properties), so never applied.
+    const inherited = Object.create({
+      '23505': { detail: 'From the prototype' },
+      '23': { detail: 'From the prototype class' },
+    }) as Record<string, { detail: string }>;
+    const ban = createBan({ map: postgresMapper({ codes: inherited }) });
+    const { body } = await dispatch(ban, uniqueViolation());
+    expect(body).toMatchObject({
+      status: 409,
+      detail: 'A record with the same value already exists',
+    });
   });
 
   it('surfaces an unknown key at map time as a handler failure', async () => {

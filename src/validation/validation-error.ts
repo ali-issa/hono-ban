@@ -19,6 +19,7 @@ export function createValidation(
       {
         detail: options.detail,
         meta: { ...options.meta, location: options.location },
+        cause: options.cause,
       },
       issues,
     );

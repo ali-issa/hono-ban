@@ -107,8 +107,10 @@ question is settled before code exists.
   interfaces) and never import the library at runtime or in types (ADR 0009). The real library is a
   devDependency in both `package.json` and `e2e/package.json`; pnpm refuses versions younger than a
   day (`minimumReleaseAge`). A database mapper's real driver is an `e2e/` devDependency (PGlite runs
-  Postgres in-process), and a driver whose error type spells its fields differently is a root
-  devDependency for a type-level test only.
+  Postgres in-process and `@electric-sql/pglite-socket` serves it to real drivers over the wire
+  protocol), and a driver whose error type spells its fields differently is a root devDependency for
+  a type-level test only. The README's database-errors table and the matrix in ADR 0015 say how each
+  driver is verified; moving a driver from fixtures to a live connection updates both.
 - A format owns its JSON Schema as a literal and pins `status`, `code`, and `title` with
   `constant()` from `schema-helpers.ts` (ADR 0003, ADR 0011). It renders from `ctx.meta`, which is
   already sanitized, and derives `type` at render time (ADR 0010). A format cannot set response

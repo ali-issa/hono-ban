@@ -65,6 +65,8 @@ export interface ValidationOptions {
   readonly location: IssueLocation;
   readonly detail?: string | undefined;
   readonly meta?: Readonly<Record<string, unknown>> | undefined;
+  /** The underlying failure, for `ErrorReport.error.cause`; never rendered (ADR 0007). */
+  readonly cause?: unknown;
 }
 
 export interface ErrorReport {

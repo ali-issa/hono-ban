@@ -22,11 +22,16 @@ import { createBan } from 'hono-ban';
 import { startServer } from './server';
 
 /**
- * Shared harness for the `postgresql-pglite-*` files: an in-memory PGlite
- * (PostgreSQL in-process, throwing pg-protocol's `DatabaseError`, the class
- * node-postgres and Neon share), a Drizzle instance over it (which wraps the
- * driver error in `DrizzleQueryError` with the driver error on `cause`), one
- * failing statement per route, and a leak check on every body.
+ * Shared harness for the `postgresql-*` files that run real server errors:
+ * an in-memory PGlite (PostgreSQL in-process, throwing pg-protocol's
+ * `DatabaseError`, the class node-postgres and Neon share), a Drizzle
+ * instance over it (which wraps the driver error in `DrizzleQueryError` with
+ * the driver error on `cause`), one failing statement per route, the
+ * expected outcome per statement, and a leak check on every body. The
+ * statements are plain strings so any client can run them: `harness()` uses
+ * PGlite and Drizzle directly, `harnessWith()` takes an executor per route
+ * prefix (the node-postgres and postgres.js files connect real drivers to
+ * the same PGlite through `./pglite-socket`).
  * @ref https://pglite.dev/docs/api
  * @ref https://orm.drizzle.team/docs/connect-pglite
  */
@@ -81,6 +86,66 @@ const STATEMENTS: Readonly<Record<string, string>> = {
   raise: "do $$ begin raise exception 'custom text'; end $$",
 };
 
+/**
+ * Expected outcome per built-in table row (SPEC 6.10): route, status, code,
+ * detail, SQLSTATE. `/fk-restrict` is the hand-written three-statement route.
+ */
+export const BUILTIN_ROWS: ReadonlyArray<
+  [string, number, string, string, string]
+> = [
+  [
+    '/duplicate',
+    409,
+    'CONFLICT',
+    'A record with the same value already exists',
+    '23505',
+  ],
+  [
+    '/fk-missing',
+    409,
+    'CONFLICT',
+    'A referenced record does not exist or is still in use',
+    '23503',
+  ],
+  [
+    '/fk-referenced',
+    409,
+    'CONFLICT',
+    'A referenced record does not exist or is still in use',
+    '23503',
+  ],
+  ['/fk-restrict', 409, 'CONFLICT', 'A record is still in use', '23001'],
+  [
+    '/not-null',
+    422,
+    'UNPROCESSABLE_CONTENT',
+    'A required value is missing',
+    '23502',
+  ],
+  [
+    '/check',
+    422,
+    'UNPROCESSABLE_CONTENT',
+    'A value violates a constraint',
+    '23514',
+  ],
+  [
+    '/invalid-uuid',
+    422,
+    'UNPROCESSABLE_CONTENT',
+    'A value is invalid or out of range',
+    '22P02',
+  ],
+];
+
+/** Codes with no row: route and SQLSTATE; each falls through to the constant 500. */
+export const FALLTHROUGH_ROWS: ReadonlyArray<[string, string]> = [
+  ['/division-by-zero', '22012'],
+  ['/sequence', '2200H'],
+  ['/undefined-table', '42P01'],
+  ['/raise', 'P0001'],
+];
+
 export interface Database {
   readonly db: PGlite;
   readonly orm: PgliteDatabase;
@@ -106,8 +171,31 @@ export interface Harness {
   readonly reports: Array<ErrorReport>;
 }
 
+/** Runs one SQL statement through some client and rejects with that client's error. */
+export type Execute = (statement: string) => Promise<unknown>;
+
+/** PGlite directly under `/`, Drizzle under `/drizzle/`. */
 export function harness(
   { db, orm }: Database,
+  map: ErrorMapper<EmptyCatalog>,
+  options: HandlerOptions<Env, EmptyCatalog> = {},
+): Harness {
+  return harnessWith(
+    {
+      '': async (statement) => db.exec(statement),
+      drizzle: async (statement) => orm.execute(sql.raw(statement)),
+    },
+    map,
+    options,
+  );
+}
+
+/**
+ * One app with every `STATEMENTS` route per executor, mounted under the
+ * executor's prefix (`''` for the root), plus `/fk-restrict` per prefix.
+ */
+export function harnessWith(
+  executors: Readonly<Record<string, Execute>>,
   map: ErrorMapper<EmptyCatalog>,
   options: HandlerOptions<Env, EmptyCatalog> = {},
 ): Harness {
@@ -122,26 +210,25 @@ export function harness(
       },
     }),
   );
-  for (const [name, statement] of Object.entries(STATEMENTS)) {
-    app.get(`/${name}`, async () => {
-      await db.exec(statement);
-      return new Response('unexpected success', { status: 200 });
-    });
-    app.get(`/drizzle/${name}`, async () => {
-      await orm.execute(sql.raw(statement));
+  for (const [prefix, execute] of Object.entries(executors)) {
+    const base = prefix === '' ? '' : `/${prefix}`;
+    for (const [name, statement] of Object.entries(STATEMENTS)) {
+      app.get(`${base}/${name}`, async () => {
+        await execute(statement);
+        return new Response('unexpected success', { status: 200 });
+      });
+    }
+    // The RESTRICT case needs the NO ACTION child row gone first.
+    app.get(`${base}/fk-restrict`, async () => {
+      await execute('delete from children where parent_id = 1');
+      try {
+        await execute('delete from parents where id = 1');
+      } finally {
+        await execute('insert into children values (1, 1)');
+      }
       return new Response('unexpected success', { status: 200 });
     });
   }
-  // The RESTRICT case needs the NO ACTION child row gone first.
-  app.get('/fk-restrict', async () => {
-    await db.exec('delete from children where parent_id = 1');
-    try {
-      await db.exec('delete from parents where id = 1');
-    } finally {
-      await db.exec('insert into children values (1, 1)');
-    }
-    return new Response('unexpected success', { status: 200 });
-  });
   let server: RunningServer | undefined;
   beforeAll(async () => {
     server = await startServer(app);

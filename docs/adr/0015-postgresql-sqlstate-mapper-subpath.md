@@ -110,3 +110,31 @@ any ban without a type argument.
   link can be dropped once 6 is unsupported; Bun's `severity` field was verified in its TypeScript
   wrapper and Rust binding, not at runtime; wire-compatible servers (CockroachDB raises 40003) may
   justify rows Postgres never raises.
+
+## Amendment 2026-09-08: verification matrix
+
+The first release verified two shapes against a live server (PGlite, Drizzle) and the rest by source
+inspection and fixtures. Since 2026-09-08 the e2e suite also connects the real node-postgres and
+postgres.js drivers over the wire protocol to the same PGlite through `@electric-sql/pglite-socket`
+(`e2e/support/pglite-socket.ts`), so every built-in row is raised by a real server and thrown by the
+real driver class for the three driver shapes that differ. Failing statements go through the simple
+query protocol because PGlite answers each extended-protocol message with its own ReadyForQuery
+(electric-sql/pglite issue 958), which desynchronizes a driver after a failed parameterized
+statement. @ref https://pglite.dev/docs/pglite-socket @ref
+https://github.com/electric-sql/pglite/issues/958
+
+| Driver or ORM        | Version inspected or run          | Verified by                                                                                   |
+| -------------------- | --------------------------------- | --------------------------------------------------------------------------------------------- |
+| PGlite               | 0.5.8 (PostgreSQL 18.3)           | Live server errors in-process, e2e (`postgresql-pglite*`)                                     |
+| node-postgres (`pg`) | 8.23.0 (`pg-protocol` 1.16.0)     | Live server errors over `pglite-socket` 0.2.11, e2e (`postgresql-node-postgres`)              |
+| postgres.js          | 3.4.9                             | Live server errors over `pglite-socket`, e2e (`postgresql-postgres-js`); `postgres.test-d.ts` |
+| Drizzle              | 0.45.2                            | Live server errors through `DrizzleQueryError`, e2e (`postgresql-pglite*`)                    |
+| Neon                 | `@neondatabase/serverless` `main` | `NeonDbError` fields from `src/httpQuery.ts`; fixture over HTTP (`postgresql-options`)        |
+| Bun SQL              | Bun `main` (Rust binding)         | `errno`/`code` placement from `error_response_jsc.rs`; fixture over HTTP; not run on Bun      |
+| Sequelize 6          | 6.x (`v6` branch)                 | `original` link from `database-error.ts`; fixture over HTTP                                   |
+| Kysely               | `main`                            | Rethrows the driver error (`postgres-driver.ts`); source inspection only                      |
+| TypeORM, MikroORM    | `master`                          | Copy the driver error's own properties onto their exception; source inspection only           |
+| Slonik, Objection    | `main`                            | `cause` and `nativeError` links; source inspection only                                       |
+
+Versions that move with Dependabot are the pins in `e2e/package.json`; this table is the snapshot at
+the amendment date.
